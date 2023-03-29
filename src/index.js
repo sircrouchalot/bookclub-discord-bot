@@ -80,51 +80,6 @@ async function main() {
     }
 };
 
-// When the client is ready, this only runs once
-// client.once('ready', () => {
-//     console.log("Client is ready. Logging in with Bot.");
-//     // Registering the commands in the client
-//     const rest = new REST({
-//         version: '10'
-//     }).setToken(TOKEN);
-
-//     (async () => {
-//         try {
-//             if (!GUILD_ID) {
-//                 const data = await rest.put (
-//                     Routes.applicationCommands(CLIENT_ID), {
-//                         body: commands
-//                     },
-//                 );
-//                 console.log(`Successfully registered ${data.length}/${commands.length} application commands globally!`);
-//             } else {
-//                 const data = await rest.put(
-//                     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-//                         body: commands
-//                     },
-//                 );
-//                 console.log(`Successfully registered ${data.length}/${commands.length} application commands for development guild!`);
-//                 console.log(`Logged in as ${client.user.tag}!`);
-//             }
-//         } catch (error) {
-//             if (error) {console.error(error);}
-//         };
-//     });
-// });
-
-// client.once(Events.ClientReady, async () => {
-//     try {
-//         await db.authenticate()
-//         .then()
-//         console.log("Connection to database has been established successfully.");
-//         Books.sync({ force: true });
-//         Guilds.sync({ force: true });
-
-//     } catch (error) {
-//         console.error("Unable to connect to the database:" + error);
-//     }
-// });
-
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
