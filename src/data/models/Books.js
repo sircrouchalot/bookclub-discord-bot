@@ -5,6 +5,7 @@ const sequelize = require("../config/database_dev.js");
 const Books = sequelize.define('books', {
     book_uid: {
       type: DataTypes.UUIDV4,
+      defaultValue: Sequelize.UUIDV4,
       allowNull: false,
       primaryKey: true
     },
@@ -33,7 +34,7 @@ const Books = sequelize.define('books', {
 		  type: DataTypes.STRING,
 		  allowNull: false
 	  },
-    chosen: {
+    botm_flag: {
 		  type: DataTypes.BOOLEAN,
 		  allowNull: false,
       defaultValue: false
