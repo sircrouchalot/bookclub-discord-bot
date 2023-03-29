@@ -21,8 +21,7 @@ const client = new Client ({
     ],
 });
 
-const port = 3060;
-const db = require("./data/config/database_dev.js");
+const db = require(`./data/config/database.js`);
 const Books = require("./data/models/Books.js");
 const Guilds = require("./data/models/Guilds.js");
 
