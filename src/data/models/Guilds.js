@@ -11,6 +11,18 @@ const Guilds = sequelize.define('guilds', {
     guild_name: {
 		  type: DataTypes.STRING,
 		  allowNull: false
+	},
+	guild_owner: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	num_members: {
+		type: DataTypes.INTEGER,
+		allowNull: false
+	},
+	guild_locale: {
+		type: DataTypes.STRING,
+		allowNull: false
 	}
 }); 
 
