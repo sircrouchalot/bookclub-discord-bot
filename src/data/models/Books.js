@@ -3,6 +3,11 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require("../config/database_dev.js");
 
 const Books = sequelize.define('books', {
+    book_uid: {
+      type: DataTypes.UUIDV4,
+      allowNull: false,
+      primaryKey: true
+    },
     guild_id: {
         type: DataTypes.STRING,
         allowNull: false

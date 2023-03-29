@@ -7,11 +7,11 @@ const Sequelize = require("sequelize");
  * Create a Sequelize instance. This can be done by passing
  * the connection parameters separately to the Sequelize constructor.
  */
-const sequelize = new Sequelize('database', 'root', 'password', {
+const sequelize = new Sequelize('database', 'user', 'password', {
   host: 'localhost',
   dialect: 'sqlite',
   logging: false,
-  storage: '../database.sqlite',
+  storage: './src/data/database.sqlite',
 });
 
 /**

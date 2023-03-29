@@ -3,11 +3,6 @@ require("dotenv").config();
 const { Client, 
     Collection,
     Events,
-    ButtonBuilder,
-    ButtonStyle,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputSytle,
     GatewayIntentBits,
     REST,
     Routes
@@ -16,12 +11,13 @@ const { Client,
 const fs = require('node:fs');
 const path = require('node:path');
 
-const TOKEN = process.env['DISCORD_TOKEN'];
-const GUILD_ID = process.env['GUILD_ID'];
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client ({
     intents: [
-        GatewayIntentBits.Guilds
+        GatewayIntentBits.Guilds,
     ],
 });
 
@@ -39,8 +35,9 @@ client.commands = new Collection();
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
 
+const rest = new REST({ version: '10' }).setToken(TOKEN);
+
 for (const folder of commandFolders) {
-    
     //Grabbing Files in /commands/<folder>
     const commandsPath = path.join(foldersPath, folder);
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -56,59 +53,64 @@ for (const folder of commandFolders) {
             console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
         }
     }
-}
+};
+
+async function main() {
+    try {
+        if (!GUILD_ID) {
+            console.log(`Registering ${commands.length} global commands...`)
+            const data = await rest.put (
+                Routes.applicationCommands(CLIENT_ID), {
+                    body: commands
+                },
+            );
+            console.log(`Successfully registered ${data.length}/${commands.length} application commands globally!`);
+        } else {
+            console.log(`Registering ${commands.length} guild commands...`)
+            const data = await rest.put(
+                Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+                    body: commands
+                },
+            );
+            console.log(`Successfully registered ${data.length}/${commands.length} application commands for development guild!`);
+            console.log(`Logged in as ${client.user.tag}!`);
+        }
+    } catch (err) {
+        console.error(err);
+    }
+};
 
 // When the client is ready, this only runs once
-client.once('ready', () => {
-    console.log("Client is ready. Logging in with Bot.");
-    // Registering the commands in the client
-    const CLIENT_ID = process.env['CLIENT_ID'];
-    const rest = new REST({
-        version: '10'
-    }).setToken(TOKEN);
-    (async () => {
-        try {
-            if (!GUILD_ID) {
-                const data = await rest.put (
-                    Routes.applicationCommands(CLIENT_ID), {
-                        body: commands
-                    },
-                );
-                console.log(`Successfully registered ${data.length}/${commands.length} application commands globally!`);
-            } else {
-                const data = await rest.put(
-                    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-                        body: commands
-                    },
-                );
-                console.log(`Successfully registered ${data.length}/${commands.length} application commands for development guild!`);
-                console.log(`Logged in as ${client.user.tag}!`);
-            }
+// client.once('ready', () => {
+//     console.log("Client is ready. Logging in with Bot.");
+//     // Registering the commands in the client
+//     const rest = new REST({
+//         version: '10'
+//     }).setToken(TOKEN);
 
-            await db.authenticate()
-            .then(() => {
-                console.log("Connection to database has been established successfully.")
-                Books.sync({ force: true });
-                Guilds.sync({ force: true });
-            });
-        } catch (error) {
-            if (error) {console.error(error);}
-        };
-
-        // try {
-        //     await db.authenticate()
-        //     .then(() => {
-        //         console.log("Connection to database has been established successfully.")
-        //         Books.sync({ force: true });
-        //         Guilds.sync({ force: true });
-        //     });
-            
-    
-        // } catch (error) {
-        //     console.error("Unable to connect to the database:" + error);
-        // }
-    });
-});
+//     (async () => {
+//         try {
+//             if (!GUILD_ID) {
+//                 const data = await rest.put (
+//                     Routes.applicationCommands(CLIENT_ID), {
+//                         body: commands
+//                     },
+//                 );
+//                 console.log(`Successfully registered ${data.length}/${commands.length} application commands globally!`);
+//             } else {
+//                 const data = await rest.put(
+//                     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+//                         body: commands
+//                     },
+//                 );
+//                 console.log(`Successfully registered ${data.length}/${commands.length} application commands for development guild!`);
+//                 console.log(`Logged in as ${client.user.tag}!`);
+//             }
+//         } catch (error) {
+//             if (error) {console.error(error);}
+//         };
+//     });
+// });
 
 // client.once(Events.ClientReady, async () => {
 //     try {
@@ -218,4 +220,16 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+client.once(Events.ClientReady, async () => {
+    try {
+        main()
+        await db.authenticate().then (async () => {
+            console.log("Connection to database has been established successfully.");
+            await db.sync({ force: true}).then (async () => 
+                console.log("Tables synced!"))
+    });
+    } catch (err) {
+        console.error(err);
+    }
+});
 client.login(TOKEN);
