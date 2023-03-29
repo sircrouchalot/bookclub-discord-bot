@@ -76,13 +76,29 @@ async function main() {
             console.log(`Logged in as ${client.user.tag}!`);
         }
     } catch (err) {
-        console.error(err);
+        console.log(err);
     }
 };
+
+async function guildCheck(interaction) {
+
+    try {
+        const guild = await Guilds.upsert({
+            guild_id: interaction.guild.id,
+            guild_name: interaction.guild.name,
+            guild_owner: interaction.guild.ownerId,
+            num_members: interaction.guild.memberCount,
+            guild_locale: interaction.guild.preferredLocale
+        });
+    } catch (err) {
+        console.log(err);
+    }
+}
 
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    guildCheck(interaction);
     const command = interaction.client.commands.get(interaction.commandName);
 
     if (!command) {
@@ -93,7 +109,7 @@ client.on(Events.InteractionCreate, async interaction => {
     try {
         await command.execute(interaction);
     } catch (error) {
-        console.error(error);
+        console.log(error);
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({
                 content: 'There was an error executing this command!',
@@ -160,7 +176,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     content: `${interaction.user.tag} suggested ${title} by ${author} for ${monthInput}`,
                 })
             } catch (error) {
-                console.error(error);
+                console.log(error);
                 return interaction.reply( {
                     content: 'Something went wrong. Try again.',
                     ephemeral: true
@@ -184,7 +200,7 @@ client.once(Events.ClientReady, async () => {
                 console.log("Tables synced!"))
     });
     } catch (err) {
-        console.error(err);
+        console.log(err);
     }
 });
 client.login(TOKEN);
