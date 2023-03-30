@@ -5,7 +5,9 @@ const { Client,
     Events,
     GatewayIntentBits,
     REST,
-    Routes
+    Routes,
+    ActionRowBuilder,
+    StringSelectMenuBuilder
 } = require('discord.js');
 
 const fs = require('node:fs');
@@ -24,6 +26,7 @@ const client = new Client ({
 const db = require(`./data/config/database.js`);
 const Books = require("./data/models/Books.js");
 const Guilds = require("./data/models/Guilds.js");
+const Botm = require("./data/models/Botm.js");
 
 const commands = [];
 
@@ -124,6 +127,65 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
+	if (interaction.isStringSelectMenu() && (interaction.customId === 'monthSelect')) {
+
+        const selected = interaction.values[0];
+
+        const dateSplit = selected.split('/');
+
+        const date = new Date(`${dateSplit[1]}-${dateSplit[0]}-01`).toISOString().split('T')[0];
+        console.log(date);
+
+        const books = await Books.findAll({
+            attributes: ['title', 'author'],
+            where: {
+                month: date
+            }
+        })
+
+        if (books) {
+            let stringSelect =[];
+
+            for (const book in books) {
+                const title = books[book].title;
+                const author = books[book].author;
+                stringSelect.push({
+                    label: `${title} by ${author}`,
+                    value: `${title} by ${author}`
+                })
+            }
+
+            // Choose Book from list of Books in database matching the month
+            const selectBotm = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('botmSelect')
+                    .setPlaceholder('Select Book of the Month')
+                    .addOptions(stringSelect),
+            );
+            await interaction.update({
+                content: "",
+                components: [selectBotm],
+                ephemeral: true
+            });
+        }
+    } else {
+        return;
+    }
+});
+
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'botmSelect')) {
+        await interaction.update({
+            content: `${interaction.values} was chosen as Book of the Month!`,
+            ephemeral: true,
+            components: []
+        })
+    } else {
+        return;
+    }
+})
+
+client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
     if (interaction.customId === 'addBookModal') {
@@ -195,8 +257,8 @@ client.once(Events.ClientReady, async () => {
         main()
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
-            await db.sync({ force: true}).then (async () => 
-                console.log("Tables synced!"))
+            await db.sync({ }).then (async () => 
+                console.log("Tables synced!"));
     });
     } catch (err) {
         console.log(err);
