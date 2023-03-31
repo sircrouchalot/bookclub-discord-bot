@@ -12,6 +12,7 @@ const { Client,
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { Op } = require("sequelize");
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -130,24 +131,24 @@ client.on(Events.InteractionCreate, async interaction => {
 	if (interaction.isStringSelectMenu() && (interaction.customId === 'monthSelect')) {
 
         const selectedMonth = interaction.values[0];
-
         const dateSplit = selectedMonth.split('/');
-
         const date = new Date(`${dateSplit[1]}-${dateSplit[0]}-01`).toISOString().split('T')[0];
-        console.log(date);
+
+        const { count } = await Botms.findAndCountAll({
+            where: {
+                month: date
+            }
+        })
+
+        if (count > 0) {
+            console.log(`That month's book has already been chosen. Select a different month.`);
+            return interaction.update({
+                content: `That month's book has already been chosen. Select a different month.`,
+                ephemeral: true
+            })
+        } 
 
         const books = await Books.findAll({
-            // attributes: [
-            //     'book_uid', 
-            //     'guild_id', 
-            //     'month',
-            //     'title', 
-            //     'author',
-            //     'pages',
-            //     'grUrl',
-            //     'submitted_by',
-            //     'botm_flag'
-            // ],
             where: {
                 month: date,
                 guild_id: interaction.guild.id
@@ -173,10 +174,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 const book_uid = bookObject.book_uid;
                 const title = bookObject.title;
                 const author = bookObject.author;
+                const month = bookObject.month;
 
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${book_uid}`
+                    value: `${book_uid}, ${month}`
                 })
             }
 
@@ -201,8 +203,26 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmSelect')) {
         
+        const values = interaction.values[0].split(',');
+
         try {
-            const book = await Books.findByPk(interaction.values[0]);
+            const { count } = await Botms.findAndCountAll({
+                where: {
+                    book_uid: values[0]
+                }
+            })
+
+            if (count > 0) {
+                console.log(`That book has already been chosen for a different month! Please try again.`);
+                return interaction.update({
+                    content: `That book has already been chosen for that month! Please try again.`,
+                    components: [],
+                    ephemeral: true
+                });
+            }
+                
+            
+            const book = await Books.findByPk(values[0]);
 
             if (book) {
                 const botm = await Botms.create({
@@ -234,24 +254,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
-
-    if (interaction.customId === 'addBookModal') {
-        await interaction.reply({
-            content: 'Book has been added! Thanks!',
-            ephemeral: true
-        })
-
-        // Get the data entered by the user
-        const monthInput = interaction.fields.getTextInputValue('monthInput');
-        const month = monthInput.split('/')[0];
-        const year = monthInput.split('/')[1];
-        const date = new Date(year, month-1, 01);
-        const title = interaction.fields.getTextInputValue('titleInput');
-        const author = interaction.fields.getTextInputValue('authorInput');
-        const pageCount = interaction.fields.getTextInputValue('pageInput');
-        const grURL = interaction.fields.getTextInputValue('grInput');
-        console.log({ date, title, author, pageCount, grURL });
-    }
 
     if (interaction.customId === 'suggestBookModal') {
 
@@ -304,7 +306,7 @@ client.once(Events.ClientReady, async () => {
         main()
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
-            await db.sync({ }).then (async () => 
+            await db.sync({  }).then (async () => 
                 console.log("Tables synced!"));
     });
     } catch (err) {
