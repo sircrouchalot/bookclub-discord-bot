@@ -26,7 +26,7 @@ const client = new Client ({
 const db = require(`./data/config/database.js`);
 const Books = require("./data/models/Books.js");
 const Guilds = require("./data/models/Guilds.js");
-const Botm = require("./data/models/Botm.js");
+const Botms = require("./data/models/Botms.js");
 
 const commands = [];
 
@@ -129,29 +129,54 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.InteractionCreate, async interaction => {
 	if (interaction.isStringSelectMenu() && (interaction.customId === 'monthSelect')) {
 
-        const selected = interaction.values[0];
+        const selectedMonth = interaction.values[0];
 
-        const dateSplit = selected.split('/');
+        const dateSplit = selectedMonth.split('/');
 
         const date = new Date(`${dateSplit[1]}-${dateSplit[0]}-01`).toISOString().split('T')[0];
         console.log(date);
 
         const books = await Books.findAll({
-            attributes: ['title', 'author'],
+            // attributes: [
+            //     'book_uid', 
+            //     'guild_id', 
+            //     'month',
+            //     'title', 
+            //     'author',
+            //     'pages',
+            //     'grUrl',
+            //     'submitted_by',
+            //     'botm_flag'
+            // ],
             where: {
-                month: date
+                month: date,
+                guild_id: interaction.guild.id
             }
         })
 
         if (books) {
             let stringSelect =[];
-
+            
             for (const book in books) {
-                const title = books[book].title;
-                const author = books[book].author;
+                let bookObject = {
+                    book_uid: books[book].book_uid,
+                    guild_id: books[book].guild_id,
+                    month: books[book].month,
+                    title: books[book].title,
+                    author: books[book].author,
+                    pages: books[book].pages,
+                    grUrl: books[book].grUrl,
+                    submitted_by: books[book].submitted_by,
+                    botm_flag: books[book].botm_flag,
+                }
+
+                const book_uid = bookObject.book_uid;
+                const title = bookObject.title;
+                const author = bookObject.author;
+
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${title} by ${author}`
+                    value: `${book_uid}`
                 })
             }
 
@@ -175,11 +200,33 @@ client.on(Events.InteractionCreate, async interaction => {
 
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmSelect')) {
-        await interaction.update({
-            content: `${interaction.values} was chosen as Book of the Month!`,
-            ephemeral: true,
-            components: []
-        })
+        
+        try {
+            const book = await Books.findByPk(interaction.values[0]);
+
+            if (book) {
+                const botm = await Botms.create({
+                    book_uid: book.book_uid,
+                    guild_id: book.guild_id,
+                    month: book.month,
+                    title: book.title,
+                    author: book.author,
+                    pages: book.pages,
+                    grUrl: book.grUrl,
+                    submitted_by: book.submitted_by
+                })
+                return await interaction.update({
+                    content: `${botm.title} by ${botm.author} was chosen as Book of the Month for ${botm.month}!`,
+                    ephemeral: true,
+                    components: []
+                })
+            } else {
+                console.log(`There was an error finding the book. Try again.`)
+            }
+            
+        } catch (err) {
+            console.log(err);
+        }
     } else {
         return;
     }
