@@ -14,7 +14,7 @@ const Books = sequelize.define('books', {
         allowNull: false
     },
     month: {
-		  type: DataTypes.DATEONLY,
+		  type: DataTypes.STRING,
 		  allowNull: false
 	  },
     title: {
@@ -34,11 +34,11 @@ const Books = sequelize.define('books', {
 		  type: DataTypes.STRING,
 		  allowNull: false
 	  },
-    botm_flag: {
-		  type: DataTypes.BOOLEAN,
-		  allowNull: false,
-      defaultValue: false
-	}
+  //   botm_flag: {
+	// 	  type: DataTypes.BOOLEAN,
+	// 	  allowNull: false,
+  //     defaultValue: false
+	// }
 
 });
 

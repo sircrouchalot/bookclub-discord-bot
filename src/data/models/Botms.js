@@ -13,7 +13,7 @@ const Botms = sequelize.define('botms', {
       allowNull: false
     },
     month: {
-		  type: DataTypes.DATEONLY,
+		  type: DataTypes.STRING,
 		  allowNull: false,
       unique: true
 	  },
