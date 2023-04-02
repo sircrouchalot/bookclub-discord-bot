@@ -6,7 +6,9 @@ const sequelize = require('sequelize');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('choosebotm')
-        .setDescription('Admin can choose the book of the month'),
+        .setDescription('Admin can choose the book of the month')
+        .setDefaultMemberPermissions(0)
+        .setDMPermission(false),
     async execute(interaction) {
         // Get List of Months from database
         const dates = await Books.findAll({
@@ -14,7 +16,7 @@ module.exports = {
                 [sequelize.fn('DISTINCT', sequelize.col('month')), 'month']
             ],
             order: [
-                ['month', 'DESC']
+                ['month', 'ASC']
             ]
         });
 
@@ -22,14 +24,13 @@ module.exports = {
             let stringSelect = [];
 
             for (const entry in dates) {
-                const date = new Date(dates[entry].month);
-                const month = ("0" + (date.getMonth() + 2)).slice(-2);
-                const year = date.getFullYear();
+
                 stringSelect.push({
-                    label: `${month}/${year}`,
-                    value: `${month}/${year}`
+                    label: `${dates[entry].month}`,
+                    value: `${dates[entry].month}`
                 })
-            }
+
+            };
 
             // Choose Month from list of months in database
             const select = new ActionRowBuilder().addComponents(

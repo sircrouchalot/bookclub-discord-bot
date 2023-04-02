@@ -4,7 +4,8 @@ const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = req
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('suggest')
-        .setDescription('Brings up dialog box to suggest a book'),
+        .setDescription('Brings up dialog box to suggest a book')
+        .setDMPermission(false),
     async execute(interaction) {
         const modal = new ModalBuilder()
             .setCustomId('suggestBookModal')
