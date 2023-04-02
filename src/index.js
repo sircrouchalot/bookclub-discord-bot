@@ -7,7 +7,8 @@ const { Client,
     REST,
     Routes,
     ActionRowBuilder,
-    StringSelectMenuBuilder
+    StringSelectMenuBuilder,
+    EmbedBuilder,
 } = require('discord.js');
 
 const fs = require('node:fs');
@@ -21,6 +22,7 @@ const GUILD_ID = process.env.GUILD_ID;
 const client = new Client ({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.MessageContent
     ],
 });
 
@@ -28,6 +30,10 @@ const db = require(`./data/config/database.js`);
 const Books = require("./data/models/Books.js");
 const Guilds = require("./data/models/Guilds.js");
 const Botms = require("./data/models/Botms.js");
+
+let botmChannel_Id;
+let botmChannel_Name;
+let botmChannel_Object = {};
 
 const commands = [];
 
@@ -98,6 +104,32 @@ async function guildCheck(interaction) {
     }
 }
 
+function dateToString(date) {
+    wMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    if (date.split('/').length === 2) {
+
+        if (date.split('/')[0].length === 2) {
+            const month = parseInt(date.split('/')[0]) - 1;
+            const year = date.split('/')[1];
+
+            return `${wMonths[month]}, ${year}`
+        }
+    }
+
+    if (date.split('-').length === 2) {
+
+        if (date.split('-')[0].length === 2) {
+            const month = parseInt(date.split('-')[0]) - 1;
+            const year = date.split('-')[1];
+
+            return `${wMonths[month]}, ${year}`
+        }
+    } else {
+        throw new Error(`Date is in wrong format!`);
+    }
+}
+
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -127,12 +159,28 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// Listener for setting botm channel to global variable
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'botmChannelSelect')) {
+        botmChannel_Id = interaction.values[0];
+        botmChannel_Object = interaction.guild.channels.cache.get(botmChannel_Id);
+        botmChannel_Name = botmChannel_Object.name;
+
+        await interaction.update({
+            content: `Book of the Month channel is set to: ${botmChannel_Name}`,
+            components: [],
+            ephemeral: true
+        });
+    } else {
+        return;
+    }
+})
+
+// Handles selecting a month in order to set a Book of the Month
 client.on(Events.InteractionCreate, async interaction => {
 	if (interaction.isStringSelectMenu() && (interaction.customId === 'monthSelect')) {
 
-        const selectedMonth = interaction.values[0];
-        const dateSplit = selectedMonth.split('/');
-        const date = new Date(`${dateSplit[1]}-${dateSplit[0]}-01`).toISOString().split('T')[0];
+        const date = interaction.values[0];
 
         const { count } = await Botms.findAndCountAll({
             where: {
@@ -175,10 +223,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 const title = bookObject.title;
                 const author = bookObject.author;
                 const month = bookObject.month;
+                const guild_id = bookObject.guild_id;
 
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${book_uid}, ${month}`
+                    value: `${book_uid}, ${guild_id}, ${month}`
                 })
             }
 
@@ -200,6 +249,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// Handles selecting a book for Book of the Month
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmSelect')) {
         
@@ -208,7 +258,8 @@ client.on(Events.InteractionCreate, async interaction => {
         try {
             const { count } = await Botms.findAndCountAll({
                 where: {
-                    book_uid: values[0]
+                    book_uid: values[0],
+                    guild_id: values[1]
                 }
             })
 
@@ -235,11 +286,22 @@ client.on(Events.InteractionCreate, async interaction => {
                     grUrl: book.grUrl,
                     submitted_by: book.submitted_by
                 })
-                return await interaction.update({
-                    content: `${botm.title} by ${botm.author} was chosen as Book of the Month for ${botm.month}!`,
+                
+                await interaction.update({
+                    content: `You selected ${botm.title} by ${botm.author} for ${botm.month}`,
                     ephemeral: true,
                     components: []
                 })
+
+                await botmChannel_Object.send({ 
+                    content: `@everyone
+                    
+***A BOOK HAS BEEN CHOSEN!***
+
+For ${botm.month}, **${botm.title} by ${botm.author}** has been selected as the Book of the Month
+${botm.grUrl}`
+                    
+                });
             } else {
                 console.log(`There was an error finding the book. Try again.`)
             }
@@ -252,49 +314,58 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 })
 
+// Handles the pop-up when suggesting a book
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
     if (interaction.customId === 'suggestBookModal') {
 
+        let month;
         // Get the data entered by the user
-        const monthInput = interaction.fields.getTextInputValue('monthInput');
-        const month = monthInput.split('/')[0];
-        const year = monthInput.split('/')[1];
-        const date = new Date(year, month-1, 01);
+        try {
+            month = dateToString(interaction.fields.getTextInputValue('monthInput'));
+            if (month === 'undefined') {
+                throw new Error();
+            }
+        } catch (err) {
+            return interaction.reply({
+                content: `Date is in wrong format. Please use mm/yyyy format.`,
+                ephemeral: true
+            })
+        }
+        
         const title = interaction.fields.getTextInputValue('titleInput');
         const author = interaction.fields.getTextInputValue('authorInput');
         const pageCount = interaction.fields.getTextInputValue('pageInput');
         const grURL = interaction.fields.getTextInputValue('grInput');
 
-        if (month.length === 2 && year.length === 4) {
-            console.log({ date, title, author, pageCount, grURL });
+        // Check that link is a goodreads link
+        if (!grURL.includes("https://")) {
+            return interaction.reply({
+                content: `URL is not a valid url. Make sure it contains "https://" at the beginning`,
+                ephemeral: true
+            })
+        }
 
         // Add book to database
-            try {
-                const book = await Books.create({
-                    guild_id: interaction.guild.id,
-                    month: date,
-                    title: title,
-                    author: author,
-                    pages: pageCount,
-                    grUrl: grURL,
-                    submitted_by: interaction.user.tag,
-                });
+        try {
+            const book = await Books.create({
+                guild_id: interaction.guild.id,
+                month: month,
+                title: title,
+                author: author,
+                pages: pageCount,
+                grUrl: grURL,
+                submitted_by: interaction.user.tag,
+            });
 
-                return interaction.reply({
-                    content: `${interaction.user.tag} suggested ${title} by ${author} for ${monthInput}`,
-                })
-            } catch (error) {
-                console.log(error);
-                return interaction.reply( {
-                    content: 'Something went wrong. Try again.',
-                    ephemeral: true
-                });
-            }
-        } else {
             return interaction.reply({
-                content: 'Date is in wrong format. Please enter it in mm/yyyy format.',
+                content: `${interaction.user.tag} suggested ${title} by ${author} for ${month}`,
+            })
+        } catch (error) {
+            console.log(error);
+            return interaction.reply( {
+                content: 'Something went wrong. Try again.',
                 ephemeral: true
             });
         }
@@ -306,6 +377,7 @@ client.once(Events.ClientReady, async () => {
         main()
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
+            Botms.sync({ force: true });
             await db.sync({  }).then (async () => 
                 console.log("Tables synced!"));
     });
