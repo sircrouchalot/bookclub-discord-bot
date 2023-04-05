@@ -13,10 +13,15 @@ const Books = sequelize.define('books', {
         type: DataTypes.STRING,
         allowNull: false
     },
-    month: {
-		  type: DataTypes.STRING,
-		  allowNull: false
+    date: {
+		  type: DataTypes.DATEONLY,
+		  allowNull: false,
+      raw: true
 	  },
+    month_string: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
     title: {
 		  type: DataTypes.STRING,
 		  allowNull: false
@@ -33,6 +38,10 @@ const Books = sequelize.define('books', {
     submitted_by: {
 		  type: DataTypes.STRING,
 		  allowNull: false
+	  },
+    img_url: {
+		  type: DataTypes.STRING,
+		  allowNull: true
 	  },
   //   botm_flag: {
 	// 	  type: DataTypes.BOOLEAN,

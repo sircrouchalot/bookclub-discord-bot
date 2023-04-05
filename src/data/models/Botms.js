@@ -12,11 +12,16 @@ const Botms = sequelize.define('botms', {
       type: DataTypes.STRING,
       allowNull: false
     },
-    month: {
-		  type: DataTypes.STRING,
+    date: {
+		  type: DataTypes.DATEONLY,
 		  allowNull: false,
       unique: true
 	  },
+    month_string: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true
+    },
     title: {
 		  type: DataTypes.STRING,
 		  allowNull: false
@@ -35,6 +40,10 @@ const Botms = sequelize.define('botms', {
     submitted_by: {
 	    type: DataTypes.STRING,
 	    allowNull: false
+	  },
+    img_url: {
+		  type: DataTypes.STRING,
+		  allowNull: true
 	  },
     avg_rating: {
 	    type: DataTypes.FLOAT,
