@@ -13,10 +13,11 @@ module.exports = {
         // Get List of Months from database
         const dates = await Books.findAll({
             attributes: [
-                [sequelize.fn('DISTINCT', sequelize.col('month')), 'month']
+                [sequelize.fn('DISTINCT', sequelize.col('date')), 'date'],
+                'month_string'
             ],
             order: [
-                ['month', 'ASC']
+                ['date', 'DESC']
             ]
         });
 
@@ -26,8 +27,8 @@ module.exports = {
             for (const entry in dates) {
 
                 stringSelect.push({
-                    label: `${dates[entry].month}`,
-                    value: `${dates[entry].month}`
+                    label: `${dates[entry].month_string}`,
+                    value: `${dates[entry].month_string}`
                 })
 
             };
