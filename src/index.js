@@ -14,6 +14,7 @@ const { Client,
 const fs = require('node:fs');
 const path = require('node:path');
 const { Op } = require("sequelize");
+const { request } = require('undici');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -102,7 +103,7 @@ async function guildCheck(interaction) {
     } catch (err) {
         console.log(err);
     }
-}
+};
 
 function dateToString(date) {
     wMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -128,13 +129,23 @@ function dateToString(date) {
     } else {
         throw new Error(`Date is in wrong format!`);
     }
-}
+};
 
+// Executes commands
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     guildCheck(interaction);
     const command = interaction.client.commands.get(interaction.commandName);
+
+    // If the command is /choosebotm, then the app checks if a channel has been set for botm updates.
+    if (interaction.commandName === 'choosebotm' && (botmChannel_Id === undefined)) {
+        return await interaction.reply({
+            content: "***You haven't set a channel for Book of the Month updates, or it was reset. Please use /setbotmchannel to do so.***",
+            components: [],
+            ephemeral: true
+        })
+    }
 
     if (!command) {
         console.error(`No command matching ${interaction.commandName} was found.`);
@@ -159,7 +170,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// Listener for setting botm channel to global variable
+// /SETBOTMCHANNEL - Listener for handling setting botm channel to global variable
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmChannelSelect')) {
         botmChannel_Id = interaction.values[0];
@@ -176,18 +187,21 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 })
 
-// Handles selecting a month in order to set a Book of the Month
+// /CHOOSEBOTM - Choose Month - Handles selecting a month in order to set a Book of the Month
 client.on(Events.InteractionCreate, async interaction => {
 	if (interaction.isStringSelectMenu() && (interaction.customId === 'monthSelect')) {
 
-        const date = interaction.values[0];
+        // Grab date that was input by user
+        const dateString = interaction.values[0];
 
+        // Counts how many books share that date in the Botms table
         const { count } = await Botms.findAndCountAll({
             where: {
-                month: date
+                month_string: dateString
             }
         })
 
+        // If count is greater than 0, then a book has already been chosen for that month
         if (count > 0) {
             console.log(`That month's book has already been chosen. Select a different month.`);
             return interaction.update({
@@ -196,13 +210,15 @@ client.on(Events.InteractionCreate, async interaction => {
             })
         } 
 
+        // Find all books in Books table for that date
         const books = await Books.findAll({
             where: {
-                month: date,
+                month_string: dateString,
                 guild_id: interaction.guild.id
             }
         })
 
+        // If there are books for that month in the Books table, then create a book object fore each one
         if (books) {
             let stringSelect =[];
             
@@ -211,6 +227,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     book_uid: books[book].book_uid,
                     guild_id: books[book].guild_id,
                     month: books[book].month,
+                    month_string: books[book].month_string,
                     title: books[book].title,
                     author: books[book].author,
                     pages: books[book].pages,
@@ -222,12 +239,13 @@ client.on(Events.InteractionCreate, async interaction => {
                 const book_uid = bookObject.book_uid;
                 const title = bookObject.title;
                 const author = bookObject.author;
-                const month = bookObject.month;
+                const monthString = bookObject.month_string;
                 const guild_id = bookObject.guild_id;
 
+                // Push book options to an array to be passed to StringSelectMenuBuilder
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${book_uid}, ${guild_id}, ${month}`
+                    value: `${book_uid}, ${guild_id}, ${monthString}`
                 })
             }
 
@@ -243,19 +261,26 @@ client.on(Events.InteractionCreate, async interaction => {
                 components: [selectBotm],
                 ephemeral: true
             });
+        } else {
+            return await interaction.update({
+                content: "",
+                components: [selectBotm],
+                ephemeral: true
+            });
         }
     } else {
         return;
     }
 });
 
-// Handles selecting a book for Book of the Month
+// /CHOOSEBOTM - Choose Book - Handles selecting a book for Book of the Month
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmSelect')) {
-        
+
         const values = interaction.values[0].split(',');
 
         try {
+            // counts all books in the Botms table that share the same book_uid in that guild (guild_id)
             const { count } = await Botms.findAndCountAll({
                 where: {
                     book_uid: values[0],
@@ -263,6 +288,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             })
 
+            // Checks if book has already been selected for another month
             if (count > 0) {
                 console.log(`That book has already been chosen for a different month! Please try again.`);
                 return interaction.update({
@@ -272,33 +298,38 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
             }
                 
-            
+            // Finds book in Books table that shares book_uid (PK)
             const book = await Books.findByPk(values[0]);
 
+            // If a book is found, push the book to Botm
             if (book) {
                 const botm = await Botms.create({
                     book_uid: book.book_uid,
                     guild_id: book.guild_id,
-                    month: book.month,
+                    month: book.date,
+                    month_string: book.month_string,
                     title: book.title,
                     author: book.author,
                     pages: book.pages,
                     grUrl: book.grUrl,
-                    submitted_by: book.submitted_by
+                    submitted_by: book.submitted_by,
+                    img_url: book.img_url
                 })
                 
+                // Update the user and let them know the selection was successful
                 await interaction.update({
-                    content: `You selected ${botm.title} by ${botm.author} for ${botm.month}`,
+                    content: `You selected ${botm.title} by ${botm.author} for ${botm.month_string}`,
                     ephemeral: true,
                     components: []
                 })
 
+                // Send message to Botm channel announcing the book that was selected
                 await botmChannel_Object.send({ 
-                    content: `@everyone
+                    content: `@here
                     
 ***A BOOK HAS BEEN CHOSEN!***
 
-For ${botm.month}, **${botm.title} by ${botm.author}** has been selected as the Book of the Month
+For ${botm.month_string}, **${botm.title} by ${botm.author}** has been selected as the Book of the Month
 ${botm.grUrl}`
                     
                 });
@@ -312,32 +343,56 @@ ${botm.grUrl}`
     } else {
         return;
     }
-})
+});
 
-// Handles the pop-up when suggesting a book
+// /SUGGEST - Handles the pop-up when suggesting a book
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
     if (interaction.customId === 'suggestBookModal') {
 
-        let month;
         // Get the data entered by the user
-        try {
-            month = dateToString(interaction.fields.getTextInputValue('monthInput'));
-            if (month === 'undefined') {
-                throw new Error();
-            }
-        } catch (err) {
-            return interaction.reply({
-                content: `Date is in wrong format. Please use mm/yyyy format.`,
-                ephemeral: true
-            })
-        }
-        
+        const month = interaction.fields.getTextInputValue('monthInput');
+        const monthString = dateToString(month);
         const title = interaction.fields.getTextInputValue('titleInput');
         const author = interaction.fields.getTextInputValue('authorInput');
+        let author_split = author;
         const pageCount = interaction.fields.getTextInputValue('pageInput');
         const grURL = interaction.fields.getTextInputValue('grInput');
+        let img_url = "";
+
+        if (author.split('.').length > 1) {
+            author_split = author.split('.').join("");
+            console.log(author_split);
+        }
+
+        const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author_split)}&limit=1`;
+        
+        console.log(url);
+
+        const bookRes = await request(url);
+        const { docs } = await bookRes.body.json();
+
+        if (docs === undefined) {
+            console.log(docs);
+        } else {
+            if (docs[0].covers !== undefined) {
+                console.log(`covers field found!`);
+                img_url = `https://covers.openlibrary.org/b/id/${docs[0].covers[0]}-M.jpg`;
+            } else if (docs[0].cover_i !== undefined) {
+                console.log(`cover_i field found!`);
+                img_url = `https://covers.openlibrary.org/b/id/${docs[0].cover_i}-M.jpg`;
+            }
+        }
+        
+
+        // Check if month date can be converted to string
+        if (!monthString) {
+            return interaction.reply({
+                content: `Date is in wrong format. Please use mm/yyyy format.`,
+                ephemeral: true 
+            })
+        }
 
         // Check that link is a goodreads link
         if (!grURL.includes("https://")) {
@@ -349,18 +404,23 @@ client.on(Events.InteractionCreate, async interaction => {
 
         // Add book to database
         try {
+            const date = `${month.split("/").reverse().join("-")}-01`;
             const book = await Books.create({
                 guild_id: interaction.guild.id,
-                month: month,
+                date: date,
+                month_string: monthString,
                 title: title,
                 author: author,
                 pages: pageCount,
                 grUrl: grURL,
                 submitted_by: interaction.user.tag,
+                img_url: img_url
             });
 
+            console.log(book);
+
             return interaction.reply({
-                content: `${interaction.user.tag} suggested ${title} by ${author} for ${month}`,
+                content: `${interaction.user.tag} suggested ${book.title} by ${book.author} for ${book.month_string}`,
             })
         } catch (error) {
             console.log(error);
@@ -372,17 +432,20 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// Executes main function and syncs tables once connected to Client
 client.once(Events.ClientReady, async () => {
     try {
         main()
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
-            Botms.sync({ force: true });
-            await db.sync({  }).then (async () => 
+            // Botms.sync({ force: true });
+            await db.sync({ force: true }).then (async () => 
                 console.log("Tables synced!"));
     });
     } catch (err) {
         console.log(err);
     }
 });
+
+// Client logs in to servers
 client.login(TOKEN);
