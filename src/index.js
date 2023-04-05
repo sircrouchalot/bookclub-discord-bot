@@ -226,7 +226,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 let bookObject = {
                     book_uid: books[book].book_uid,
                     guild_id: books[book].guild_id,
-                    month: books[book].month,
+                    date: books[book].month,
                     month_string: books[book].month_string,
                     title: books[book].title,
                     author: books[book].author,
@@ -306,7 +306,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 const botm = await Botms.create({
                     book_uid: book.book_uid,
                     guild_id: book.guild_id,
-                    month: book.date,
+                    date: book.date,
                     month_string: book.month_string,
                     title: book.title,
                     author: book.author,
