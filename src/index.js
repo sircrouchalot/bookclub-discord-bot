@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Op } = require("sequelize");
 const { request } = require('undici');
+const probe = require('probe-image-size');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -36,12 +37,13 @@ let botmChannel_Id;
 let botmChannel_Name;
 let botmChannel_Object = {};
 
+// Create array for commands
 const commands = [];
 
-//Creating a collection for commands in client
+// Creating a collection for commands in client
 client.commands = new Collection();
 
-//Grabbing Folders in /commands
+// Grabbing Folders in /commands
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
 
@@ -65,6 +67,7 @@ for (const folder of commandFolders) {
     }
 };
 
+// main function
 async function main() {
     try {
         if (!GUILD_ID) {
@@ -90,6 +93,7 @@ async function main() {
     }
 };
 
+// Adds Guild to Guild table if it doesn't already exist
 async function guildCheck(interaction) {
 
     try {
@@ -105,6 +109,7 @@ async function guildCheck(interaction) {
     }
 };
 
+//Converts date entered to string in format 'MONTH, YYYY'
 function dateToString(date) {
     wMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -130,6 +135,88 @@ function dateToString(date) {
         throw new Error(`Date is in wrong format!`);
     }
 };
+
+// Gets image size of image at imageUrl
+async function getImageSize (imageUrl) {
+    let result = await probe (imageUrl);
+    let imageObject = result;
+    return imageObject;
+}
+
+// Grabs book cover image of first english edition in open libarary api request
+async function getBookImage(url, interaction) {
+    let image_url = "";
+    const bookRes = await request(url);
+    const { docs } = await bookRes.body.json();
+
+    await interaction.deferReply();
+    if (docs === undefined) {
+
+    } else {
+        if (docs[0].isbn !==undefined) {
+            console.log("isbn found!");
+            
+            isbnLoop:
+            for (entry in docs[0].isbn) {
+                image_url = `https://covers.openlibrary.org/b/isbn/${docs[0].isbn[entry]}-L.jpg`;
+                const width = (await getImageSize(image_url)).width;
+                const height = (await getImageSize(image_url)).height;
+
+                if ((width > 20) && (height > 20)) {
+                    const briefReqUrl = `http://openlibrary.org/api/volumes/brief/isbn/${docs[0].isbn[entry]}.json`;
+                    console.log(briefReqUrl);
+                    const briefRes = await request(briefReqUrl);
+                    const { records } = await briefRes.body.json();
+                    
+                    languageLoop:
+                    for (entry in records) {
+                        let language = records[entry].details.details.languages;
+                        if (language !== undefined) {
+                            language = language[0].key.split('/')[2];
+                            console.log(language);
+                        }
+
+                        if (language === 'eng') {
+                            break isbnLoop;
+                        } else {
+                            break languageLoop;
+                        }
+                    }
+                }
+            }
+            return image_url;
+        }
+        else if (docs[0].covers !== undefined) {
+            console.log(`covers field found!`);
+            for (entry in docs[0].covers) {
+                img_url = `https://covers.openlibrary.org/b/id/${docs[0].covers[entry]}-M.jpg`;
+                const width = (await getImageSize(img_url)).width;
+                const height = (await getImageSize(img_url)).height;
+
+                if ((width > 20) && (height > 20)) {
+
+                    break;
+                }
+            }
+        }
+        else if (docs[0].edition_key !== undefined) {
+            console.log(`edition_key field found!`);
+            
+            for (edition in docs[0].edition_key) {
+                img_url = `https://covers.openlibrary.org/b/olid/${docs[0].edition_key[edition]}-M.jpg`;
+                const width = (await getImageSize(img_url)).width;
+                const height = (await getImageSize(img_url)).height;
+
+                if ((width > 20) && (height > 20)) {
+
+                    break;
+                }
+            }
+                        
+            
+        }            
+    }
+}
 
 // Executes commands
 client.on(Events.InteractionCreate, async interaction => {
@@ -366,25 +453,14 @@ client.on(Events.InteractionCreate, async interaction => {
             console.log(author_split);
         }
 
-        const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author_split)}&limit=1`;
-        
-        console.log(url);
-
-        const bookRes = await request(url);
-        const { docs } = await bookRes.body.json();
-
-        if (docs === undefined) {
-            console.log(docs);
-        } else {
-            if (docs[0].covers !== undefined) {
-                console.log(`covers field found!`);
-                img_url = `https://covers.openlibrary.org/b/id/${docs[0].covers[0]}-M.jpg`;
-            } else if (docs[0].cover_i !== undefined) {
-                console.log(`cover_i field found!`);
-                img_url = `https://covers.openlibrary.org/b/id/${docs[0].cover_i}-M.jpg`;
-            }
+        if (title.split('.').length > 1) {
+            title_split = title.split('.').join("");
+            console.log(title_split);
         }
+
+        const req_url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author_split)}&limit=1`;
         
+        img_url = await getBookImage(req_url, interaction);
 
         // Check if month date can be converted to string
         if (!monthString) {
@@ -419,12 +495,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
             console.log(book);
 
-            return interaction.reply({
+            return interaction.editReply({
                 content: `${interaction.user.tag} suggested ${book.title} by ${book.author} for ${book.month_string}`,
             })
         } catch (error) {
             console.log(error);
-            return interaction.reply( {
+            return interaction.editReply( {
                 content: 'Something went wrong. Try again.',
                 ephemeral: true
             });
