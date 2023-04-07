@@ -112,27 +112,19 @@ async function guildCheck(interaction) {
 //Converts date entered to string in format 'MONTH, YYYY'
 function dateToString(date) {
     wMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
+    if (date.split('-').length > 1) {
+        return null;
+    }
     if (date.split('/').length === 2) {
 
         if (date.split('/')[0].length === 2) {
             const month = parseInt(date.split('/')[0]) - 1;
             const year = date.split('/')[1];
 
-            return `${wMonths[month]}, ${year}`
-        }
-    }
-
-    if (date.split('-').length === 2) {
-
-        if (date.split('-')[0].length === 2) {
-            const month = parseInt(date.split('-')[0]) - 1;
-            const year = date.split('-')[1];
-
-            return `${wMonths[month]}, ${year}`
+            return `${wMonths[month]}, ${year}`;
         }
     } else {
-        throw new Error(`Date is in wrong format!`);
+        return null;
     }
 };
 
@@ -143,13 +135,14 @@ async function getImageSize (imageUrl) {
     return imageObject;
 }
 
-// Grabs book cover image of first english edition in open libarary api request
-async function getBookImage(url, interaction) {
+// Grabs book cover image and description of first english edition in open libarary api request
+async function getBookDetails(url) {
+    let description = "";
     let image_url = "";
     const bookRes = await request(url);
     const { docs } = await bookRes.body.json();
 
-    await interaction.deferReply();
+    
     if (docs === undefined) {
 
     } else {
@@ -176,6 +169,15 @@ async function getBookImage(url, interaction) {
                             console.log(language);
                         }
 
+                        if (records[entry].details.details.description !== undefined) {
+                            description = records[entry].details.details.description
+                            if (typeof description === 'object') {
+                                console.log(description);
+                                description = description.value;
+                            }
+
+                        } else { description = "No Description found"}
+
                         if (language === 'eng') {
                             break isbnLoop;
                         } else {
@@ -184,37 +186,9 @@ async function getBookImage(url, interaction) {
                     }
                 }
             }
-            return image_url;
+            const bookObject = {image: image_url, desc: description}
+            return bookObject;
         }
-        else if (docs[0].covers !== undefined) {
-            console.log(`covers field found!`);
-            for (entry in docs[0].covers) {
-                img_url = `https://covers.openlibrary.org/b/id/${docs[0].covers[entry]}-M.jpg`;
-                const width = (await getImageSize(img_url)).width;
-                const height = (await getImageSize(img_url)).height;
-
-                if ((width > 20) && (height > 20)) {
-
-                    break;
-                }
-            }
-        }
-        else if (docs[0].edition_key !== undefined) {
-            console.log(`edition_key field found!`);
-            
-            for (edition in docs[0].edition_key) {
-                img_url = `https://covers.openlibrary.org/b/olid/${docs[0].edition_key[edition]}-M.jpg`;
-                const width = (await getImageSize(img_url)).width;
-                const height = (await getImageSize(img_url)).height;
-
-                if ((width > 20) && (height > 20)) {
-
-                    break;
-                }
-            }
-                        
-            
-        }            
     }
 }
 
@@ -458,10 +432,6 @@ client.on(Events.InteractionCreate, async interaction => {
             console.log(title_split);
         }
 
-        const req_url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author_split)}&limit=1`;
-        
-        img_url = await getBookImage(req_url, interaction);
-
         // Check if month date can be converted to string
         if (!monthString) {
             return interaction.reply({
@@ -478,6 +448,12 @@ client.on(Events.InteractionCreate, async interaction => {
             })
         }
 
+        await interaction.deferReply( { ephemeral: true });
+
+        const req_url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author_split)}&limit=1`;
+        
+        imgDescObject = await getBookDetails(req_url, interaction);    
+
         // Add book to database
         try {
             const date = `${month.split("/").reverse().join("-")}-01`;
@@ -490,19 +466,35 @@ client.on(Events.InteractionCreate, async interaction => {
                 pages: pageCount,
                 grUrl: grURL,
                 submitted_by: interaction.user.tag,
-                img_url: img_url
+                img_url: imgDescObject.image
             });
 
             console.log(book);
 
-            return interaction.editReply({
-                content: `${interaction.user.tag} suggested ${book.title} by ${book.author} for ${book.month_string}`,
+            const suggestionEmbed = new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle(`${book.title} by ${book.author}`)
+                .setURL(book.grUrl)
+                .setAuthor({ name: `${interaction.user.username} suggested a book for ${book.month_string}!`, iconURL: `${interaction.user.displayAvatarURL()}` })
+                .setDescription(`${imgDescObject.desc}`)
+                .addFields(
+                    {name: 'Page Count', value: book.pages}
+                )
+                .setImage(book.img_url)
+                .setFooter({
+                    text: `**Powered by ${client.user.username}** - built by Alex Crouch`
+                })
+
+            await interaction.editReply({
+                content: `You suggested ${book.title} by ${book.author} for ${book.month_string}`
             })
+
+            interaction.channel.send({ embeds: [suggestionEmbed] });
+            
         } catch (error) {
             console.log(error);
             return interaction.editReply( {
-                content: 'Something went wrong. Try again.',
-                ephemeral: true
+                content: 'Something went wrong. Try again. If you continue to have issues use **/manualSuggest**',
             });
         }
     }
