@@ -35,13 +35,13 @@ module.exports = {
 
         const pageCount = new TextInputBuilder()
             .setCustomId('pageInput')
-            .setRequired(false)
+            .setRequired(true)
             .setLabel('# of Pages')
             .setStyle(TextInputStyle.Short);
 
         const goodreadsInput = new TextInputBuilder()
             .setCustomId('grInput')
-            .setRequired(false)
+            .setRequired(true)
             .setLabel('Goodreads URL')
             .setStyle(TextInputStyle.Short);
 
