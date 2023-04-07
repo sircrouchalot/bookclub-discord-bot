@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { StringSelectMenuBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
 const Books = require("../../data/models/Books.js");
-const Botms = require("../../data/models/Botms.js");
 const { QueryTypes} = require('sequelize');
 
 module.exports = {
