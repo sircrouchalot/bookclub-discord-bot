@@ -14,7 +14,7 @@ module.exports = {
 
         let stringSelect = [];
 
-        if ((dates) && dates.length > 0) {
+        if ((dates) && Object.keys(dates).length > 0) {
             for (const entry in dates) {
                 stringSelect.push({
                     label: `${dates[entry].month_string}`,
@@ -22,6 +22,11 @@ module.exports = {
                 })
 
             };
+        } else {
+            return await interaction.reply({
+                content: "There are no months that have book suggestions. Please suggest a book!",
+                ephemeral: true
+            })
         }
             
         // Choose Month from list of months in database
