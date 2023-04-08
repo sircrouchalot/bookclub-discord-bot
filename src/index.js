@@ -254,22 +254,6 @@ client.on(Events.InteractionCreate, async interaction => {
         // Grab date that was input by user
         const dateString = interaction.values[0];
 
-        // Counts how many books share that date in the Botms table
-        const { count } = await Botms.findAndCountAll({
-            where: {
-                month_string: dateString
-            }
-        })
-
-        // If count is greater than 0, then a book has already been chosen for that month
-        if (count > 0) {
-            console.log(`That month's book has already been chosen. Select a different month.`);
-            return interaction.update({
-                content: `That month's book has already been chosen. Select a different month.`,
-                ephemeral: true
-            })
-        } 
-
         // Find all books in Books table for that date
         const books = await Books.findAll({
             where: {
@@ -279,7 +263,7 @@ client.on(Events.InteractionCreate, async interaction => {
         })
 
         // If there are books for that month in the Books table, then create a book object fore each one
-        if (books) {
+        if ((books) && books.length > 0) {
             let stringSelect =[];
             
             for (const book in books) {
@@ -293,7 +277,6 @@ client.on(Events.InteractionCreate, async interaction => {
                     pages: books[book].pages,
                     grUrl: books[book].grUrl,
                     submitted_by: books[book].submitted_by,
-                    botm_flag: books[book].botm_flag,
                 }
 
                 const book_uid = bookObject.book_uid;
@@ -352,7 +335,7 @@ client.on(Events.InteractionCreate, async interaction => {
             if (count > 0) {
                 console.log(`That book has already been chosen for a different month! Please try again.`);
                 return interaction.update({
-                    content: `That book has already been chosen for that month! Please try again.`,
+                    content: `That book has already been chosen for a different month! Please try again.`,
                     components: [],
                     ephemeral: true
                 });
@@ -362,7 +345,7 @@ client.on(Events.InteractionCreate, async interaction => {
             const book = await Books.findByPk(values[0]);
 
             // If a book is found, push the book to Botm
-            if (book) {
+            if ((book) && book.length > 0) {
                 const botm = await Botms.create({
                     book_uid: book.book_uid,
                     guild_id: book.guild_id,
@@ -384,15 +367,28 @@ client.on(Events.InteractionCreate, async interaction => {
                 })
 
                 // Send message to Botm channel announcing the book that was selected
-                await botmChannel_Object.send({ 
-                    content: `@here
+//                 await botmChannel_Object.send({ 
+//                     content: `@here
                     
-***A BOOK HAS BEEN CHOSEN!***
+// ***A BOOK HAS BEEN CHOSEN!***
 
-For ${botm.month_string}, **${botm.title} by ${botm.author}** has been selected as the Book of the Month
-${botm.grUrl}`
+// For ${botm.month_string}, **${botm.title} by ${botm.author}** has been selected as the Book of the Month
+// ${botm.grUrl}`
                     
-                });
+//                 });
+
+                const botmEmbed = new EmbedBuilder()
+                    .setColor(0x0099FF)
+                    .setTitle(`${book.title} by ${book.author}`)
+                    .setURL(book.grUrl)
+                    .setDescription(`${imgDescObject.desc}`)
+                    .addFields(
+                        {name: 'Page Count', value: book.pages}
+                    )
+                    .setImage(book.img_url)
+                    .setFooter({
+                        text: `**Powered by ${client.user.username}** - built by Alex Crouch`
+                    })
             } else {
                 console.log(`There was an error finding the book. Try again.`)
             }
@@ -500,6 +496,268 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 });
+
+// /VOTE - Handles when a user votes for the Book of the Month
+client.on(Events.InteractionCreate, async interaction => {
+
+    let firstChoiceUid;
+    let secondChoiceUid;
+    let thirdChoiceUid;
+
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'voteMonthSelect')) {
+
+        // Grab date that was input by user
+        const dateString = interaction.values[0];
+
+        // Find all books in Books table for that date
+        const books = await Books.findAll({
+            where: {
+                month_string: dateString,
+                guild_id: interaction.guild.id
+            }
+        })
+
+        // If there are books for that month in the Books table, then create a book object fore each one
+        if (books) {
+            let stringSelect =[];
+            
+            for (const book in books) {
+                let bookObject = {
+                    book_uid: books[book].book_uid,
+                    guild_id: books[book].guild_id,
+                    date: books[book].month,
+                    month_string: books[book].month_string,
+                    title: books[book].title,
+                    author: books[book].author,
+                    pages: books[book].pages,
+                    grUrl: books[book].grUrl,
+                    submitted_by: books[book].submitted_by,
+                }
+
+                const book_uid = bookObject.book_uid;
+                const title = bookObject.title;
+                const author = bookObject.author;
+                const monthString = bookObject.month_string;
+                const guild_id = bookObject.guild_id;
+
+                // Push book options to an array to be passed to StringSelectMenuBuilder
+                stringSelect.push({
+                    label: `${title} by ${author}`,
+                    value: `${book_uid}//${guild_id}//${monthString}`
+                })
+            }
+
+            // Choose Book from list of Books in database matching the month
+            const selectFirstChoice = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('voteFirstSelect')
+                    .setPlaceholder('Please select your FIRST choice:')
+                    .addOptions(stringSelect),
+            );
+            await interaction.update({
+                content: "",
+                components: [selectFirstChoice],
+                ephemeral: true
+            });
+        } else {
+            return await interaction.update({
+                content: `There are no books for this month to vote for. Not sure how you got here. Please try again or try suggesting a book.`,
+                components: []
+            });
+        }
+    }
+
+    // Handles when a user selets their FIRST choice - displays options for Second Choice
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'voteFirstSelect')) {
+
+        // Grab book that was selected by the user
+        firstChoiceUid = interaction.values[0].split('//')[0];
+
+        // Get book data of selection by book_uid
+        const book = await Books.findByPk(firstChoiceUid);
+
+        // If a book is found, record vote
+        if (book) {
+            await Books.update(
+                {votes: book.votes + 3},
+                {where: {
+                    book_uid: book.book_uid
+                }}
+            ).then(console.log(`${interaction.user.tag} gave 3 votes to ${book.title} by ${book.author} for the month of ${book.month_string}`));
+        }
+
+        // Find all books in Books table for that date, excluding the book already selected
+        const secondChoiceBooks = await Books.findAll({
+            where: {
+                month_string: interaction.values[0].split('//')[2],
+                guild_id: interaction.values[0].split('//')[1],
+                book_uid: {
+                    [Op.not]: firstChoiceUid
+                }
+            }
+        })
+
+        // If there are books for that month in the Books table, then create a book object fore each one
+        if (secondChoiceBooks && secondChoiceBooks.length > 0) {
+            let stringSelect =[];
+            
+            for (const book in secondChoiceBooks) {
+                let bookObject = {
+                    book_uid: secondChoiceBooks[book].book_uid,
+                    guild_id: secondChoiceBooks[book].guild_id,
+                    date: secondChoiceBooks[book].month,
+                    month_string: secondChoiceBooks[book].month_string,
+                    title: secondChoiceBooks[book].title,
+                    author: secondChoiceBooks[book].author,
+                    pages: secondChoiceBooks[book].pages,
+                    grUrl: secondChoiceBooks[book].grUrl,
+                    submitted_by: secondChoiceBooks[book].submitted_by,
+                }
+
+                const book_uid = bookObject.book_uid;
+                const title = bookObject.title;
+                const author = bookObject.author;
+                const monthString = bookObject.month_string;
+                const guild_id = bookObject.guild_id;
+
+                // Push book options to an array to be passed to StringSelectMenuBuilder
+                stringSelect.push({
+                    label: `${title} by ${author}`,
+                    value: `${book_uid}//${guild_id}//${monthString}`
+                })
+            }
+
+            // Choose Book from list of Books in database matching the month
+            const selectSecondChoice = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('voteSecondSelect')
+                    .setPlaceholder('Please select your SECOND choice:')
+                    .addOptions(stringSelect),
+            );
+            await interaction.update({
+                content: "",
+                components: [selectSecondChoice],
+                ephemeral: true
+            });
+        } else {
+            return await interaction.update({
+                content: `There are no books left to vote for. Thank you for voting! Please do not vote a second time.`,
+                components: []
+            });
+        }
+    }
+
+    // Handles when a user selets their SECOND choice - displays options for Third Choice
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'voteSecondSelect')) {
+
+        // Grab book that was selected first by the user
+        firstChoiceUid = interaction.values[0].split('//')[3];
+
+        // Grab book that was selected second by the user
+        secondChoiceUid = interaction.values[0].split('//')[0];
+
+        // Get book data of selection by book_uid
+        const book = await Books.findByPk(secondChoiceUid);
+
+        // If a book is found, record vote
+        if (book) {
+            await Books.update(
+                {votes: book.votes + 2},
+                {where: {
+                    book_uid: book.book_uid
+                }}
+            ).then(console.log(`${interaction.user.tag} gave 2 votes to ${book.title} by ${book.author} for the month of ${book.month_string}`));
+        }
+
+        // Find all books in Books table for that date, excluding the books already selected
+        const thirdChoiceBooks = await Books.findAll({
+            where: {
+                month_string: interaction.values[0].split('//')[2],
+                guild_id: interaction.values[0].split('//')[1],
+                book_uid: {
+                    [Op.and]: [
+                        {[Op.not]: firstChoiceUid},
+                        {[Op.not]: secondChoiceUid}
+                    ]
+                    
+                }
+            }
+        })
+
+        // If there are books for that month in the Books table, then create a book object fore each one
+        if (thirdChoiceBooks && thirdChoiceBooks.length > 0) {
+            let stringSelect =[];
+            
+            for (const book in thirdChoiceBooks) {
+                let bookObject = {
+                    book_uid: thirdChoiceBooks[book].book_uid,
+                    guild_id: thirdChoiceBooks[book].guild_id,
+                    date: thirdChoiceBooks[book].month,
+                    month_string: thirdChoiceBooks[book].month_string,
+                    title: thirdChoiceBooks[book].title,
+                    author: thirdChoiceBooks[book].author,
+                    pages: thirdChoiceBooks[book].pages,
+                    grUrl: thirdChoiceBooks[book].grUrl,
+                    submitted_by: thirdChoiceBooks[book].submitted_by,
+                }
+
+                const book_uid = bookObject.book_uid;
+                const title = bookObject.title;
+                const author = bookObject.author;
+                const monthString = bookObject.month_string;
+                const guild_id = bookObject.guild_id;
+
+                // Push book options to an array to be passed to StringSelectMenuBuilder
+                stringSelect.push({
+                    label: `${title} by ${author}`,
+                    value: `${book_uid}//${guild_id}//${monthString}`
+                })
+            }
+
+            // Choose Book from list of Books in database matching the month
+            const selectThirdChoice = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('voteThirdSelect')
+                    .setPlaceholder('Please select your THIRD choice:')
+                    .addOptions(stringSelect),
+            );
+            await interaction.update({
+                content: "",
+                components: [selectThirdChoice],
+                ephemeral: true
+            });
+        } else {
+            return await interaction.update({
+                content: `There are no books left to vote for. Thank you for voting! Please do not vote a second time.`,
+                components: [ ]
+            });
+        }
+    }
+
+    // Handles when a user selets their THIRD choice - Records last vote and thanks the user
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'voteThirdSelect')) {
+
+        // Grab book that was selected third by the user
+        thirdChoiceUid = interaction.values[0].split('//')[0];
+
+        // Get book data of selection by book_uid
+        const book = await Books.findByPk(thirdChoiceUid);
+
+        // If a book is found, record vote
+        if (book) {
+            await Books.update(
+                {votes: book.votes + 1},
+                {where: {
+                    book_uid: book.book_uid
+                }}
+            ).then(console.log(`${interaction.user.tag} gave 1 vote to ${book.title} by ${book.author} for the month of ${book.month_string}`));
+        }
+
+        return await interaction.update({
+            content: `Thank you for voting! Your votes have been recorded! Please do not vote a second time.`
+        })
+    }
+})
 
 // Executes main function and syncs tables once connected to Client
 client.once(Events.ClientReady, async () => {
