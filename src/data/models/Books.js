@@ -43,11 +43,11 @@ const Books = sequelize.define('books', {
 		  type: DataTypes.STRING,
 		  allowNull: true
 	  },
-  //   botm_flag: {
-	// 	  type: DataTypes.BOOLEAN,
-	// 	  allowNull: false,
-  //     defaultValue: false
-	// }
+    votes: {
+		  type: DataTypes.INTEGER,
+		  allowNull: false,
+      defaultValue: 0
+	  },
 
 });
 
