@@ -32,6 +32,7 @@ const db = require(`./data/config/database.js`);
 const Books = require("./data/models/Books.js");
 const Guilds = require("./data/models/Guilds.js");
 const Botms = require("./data/models/Botms.js");
+const Votes = require("./data/models/Votes.js");
 
 let botmChannel_Id;
 let botmChannel_Name;
@@ -504,7 +505,11 @@ client.on(Events.InteractionCreate, async interaction => {
     let secondChoiceUid;
     let thirdChoiceUid;
 
+    let votesJsonObject = {};
+
     if (interaction.isStringSelectMenu() && (interaction.customId === 'voteMonthSelect')) {
+
+        let vote_record;
 
         // Grab date that was input by user
         const dateString = interaction.values[0];
@@ -517,15 +522,44 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         })
 
+        const votes = await Votes.findAll({
+            where: {
+                month_string: dateString,
+                guild_id: interaction.guild.id,
+                user: interaction.user.tag
+            }
+        })
+
+        console.log(`Number of Votes: ${votes.length}`);
+
+        if ((votes) && votes.length === 0) {
+            vote_record = await Votes.create({
+                guild_id: interaction.guild.id,
+                month_string: dateString,
+                user: interaction.user.tag,
+                votes: JSON.stringify({})
+            })
+        } else {
+            console.log(votes.length)
+            vote_record = await Votes.findOne({
+                where: {
+                    guild_id: interaction.guild.id,
+                    month_string: dateString,
+                    user: interaction.user.tag
+                }
+            })
+            console.log(vote_record);
+        }
+
         // If there are books for that month in the Books table, then create a book object fore each one
-        if (books) {
+        if (books && books.length > 0) {
             let stringSelect =[];
             
             for (const book in books) {
                 let bookObject = {
                     book_uid: books[book].book_uid,
                     guild_id: books[book].guild_id,
-                    date: books[book].month,
+                    date: books[book].date,
                     month_string: books[book].month_string,
                     title: books[book].title,
                     author: books[book].author,
@@ -543,7 +577,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 // Push book options to an array to be passed to StringSelectMenuBuilder
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${book_uid}//${guild_id}//${monthString}`
+                    value: `${book_uid}//${vote_record.vote_uid}`
                 })
             }
 
@@ -572,25 +606,46 @@ client.on(Events.InteractionCreate, async interaction => {
 
         // Grab book that was selected by the user
         firstChoiceUid = interaction.values[0].split('//')[0];
+        console.log(firstChoiceUid);
+
+        let vote_uid = interaction.values[0].split('//')[1];
+        console.log(vote_uid);
+
+        let vote_record;
 
         // Get book data of selection by book_uid
         const book = await Books.findByPk(firstChoiceUid);
 
         // If a book is found, record vote
         if (book) {
-            await Books.update(
-                {votes: book.votes + 3},
-                {where: {
-                    book_uid: book.book_uid
-                }}
-            ).then(console.log(`${interaction.user.tag} gave 3 votes to ${book.title} by ${book.author} for the month of ${book.month_string}`));
+            
+            vote_record = await Votes.findByPk(vote_uid, {
+                attributes: ['votes', 'month_string'],
+                raw: true
+            })
+
+            let voteObject = JSON.parse(vote_record.votes)
+
+            voteObject.first = firstChoiceUid;
+
+            await Votes.upsert({
+                vote_uid: interaction.values[0].split('//')[1],
+                guild_id: interaction.guild.id,
+                month_string: vote_record.month_string,
+                user: interaction.user.tag,
+                votes: JSON.stringify(voteObject)
+            })
+            
+            console.log(`${interaction.user.tag} gave 3 votes to ${book.title} by ${book.author} for the month of ${book.month_string}`);
+
+            
         }
 
-        // Find all books in Books table for that date, excluding the book already selected
+        // Find all books in Books table for that month, excluding the book already selected
         const secondChoiceBooks = await Books.findAll({
             where: {
-                month_string: interaction.values[0].split('//')[2],
-                guild_id: interaction.values[0].split('//')[1],
+                month_string: vote_record.month_string,
+                guild_id: interaction.guild.id,
                 book_uid: {
                     [Op.not]: firstChoiceUid
                 }
@@ -605,7 +660,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 let bookObject = {
                     book_uid: secondChoiceBooks[book].book_uid,
                     guild_id: secondChoiceBooks[book].guild_id,
-                    date: secondChoiceBooks[book].month,
+                    date: secondChoiceBooks[book].date,
                     month_string: secondChoiceBooks[book].month_string,
                     title: secondChoiceBooks[book].title,
                     author: secondChoiceBooks[book].author,
@@ -623,7 +678,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 // Push book options to an array to be passed to StringSelectMenuBuilder
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${book_uid}//${guild_id}//${monthString}`
+                    value: `${book_uid}//${vote_uid}`
                 })
             }
 
@@ -640,6 +695,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 ephemeral: true
             });
         } else {
+
             return await interaction.update({
                 content: `There are no books left to vote for. Thank you for voting! Please do not vote a second time.`,
                 components: []
@@ -650,30 +706,45 @@ client.on(Events.InteractionCreate, async interaction => {
     // Handles when a user selets their SECOND choice - displays options for Third Choice
     if (interaction.isStringSelectMenu() && (interaction.customId === 'voteSecondSelect')) {
 
-        // Grab book that was selected first by the user
-        firstChoiceUid = interaction.values[0].split('//')[3];
-
         // Grab book that was selected second by the user
         secondChoiceUid = interaction.values[0].split('//')[0];
+
+        let vote_uid = interaction.values[0].split('//')[1];
+
+        let vote_record;
 
         // Get book data of selection by book_uid
         const book = await Books.findByPk(secondChoiceUid);
 
         // If a book is found, record vote
         if (book) {
-            await Books.update(
-                {votes: book.votes + 2},
-                {where: {
-                    book_uid: book.book_uid
-                }}
-            ).then(console.log(`${interaction.user.tag} gave 2 votes to ${book.title} by ${book.author} for the month of ${book.month_string}`));
+            vote_record = await Votes.findByPk(vote_uid, {
+                attributes: ['vote_uid', 'votes', 'month_string'],
+                raw: true
+            })
+
+            let voteObject = JSON.parse(vote_record.votes)
+
+            voteObject.second = secondChoiceUid;
+
+            firstChoiceUid = voteObject.first;
+
+            await Votes.upsert({
+                vote_uid: interaction.values[0].split('//')[1],
+                guild_id: interaction.guild.id,
+                month_string: vote_record.month_string,
+                user: interaction.user.tag,
+                votes: JSON.stringify(voteObject)
+            })
+            
+            console.log(`${interaction.user.tag} gave 2 votes to ${book.title} by ${book.author} for the month of ${book.month_string}`);
         }
 
         // Find all books in Books table for that date, excluding the books already selected
         const thirdChoiceBooks = await Books.findAll({
             where: {
-                month_string: interaction.values[0].split('//')[2],
-                guild_id: interaction.values[0].split('//')[1],
+                month_string: vote_record.month_string,
+                guild_id: interaction.guild.id,
                 book_uid: {
                     [Op.and]: [
                         {[Op.not]: firstChoiceUid},
@@ -692,7 +763,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 let bookObject = {
                     book_uid: thirdChoiceBooks[book].book_uid,
                     guild_id: thirdChoiceBooks[book].guild_id,
-                    date: thirdChoiceBooks[book].month,
+                    date: thirdChoiceBooks[book].date,
                     month_string: thirdChoiceBooks[book].month_string,
                     title: thirdChoiceBooks[book].title,
                     author: thirdChoiceBooks[book].author,
@@ -710,7 +781,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 // Push book options to an array to be passed to StringSelectMenuBuilder
                 stringSelect.push({
                     label: `${title} by ${author}`,
-                    value: `${book_uid}//${guild_id}//${monthString}`
+                    value: `${book_uid}//${vote_uid}`
                 })
             }
 
@@ -727,6 +798,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 ephemeral: true
             });
         } else {
+
             return await interaction.update({
                 content: `There are no books left to vote for. Thank you for voting! Please do not vote a second time.`,
                 components: [ ]
@@ -740,21 +812,81 @@ client.on(Events.InteractionCreate, async interaction => {
         // Grab book that was selected third by the user
         thirdChoiceUid = interaction.values[0].split('//')[0];
 
+        let vote_uid = interaction.values[0].split('//')[1];
+
+        let vote_record;
+
         // Get book data of selection by book_uid
         const book = await Books.findByPk(thirdChoiceUid);
 
+        let voteObject;
         // If a book is found, record vote
         if (book) {
-            await Books.update(
-                {votes: book.votes + 1},
-                {where: {
-                    book_uid: book.book_uid
-                }}
-            ).then(console.log(`${interaction.user.tag} gave 1 vote to ${book.title} by ${book.author} for the month of ${book.month_string}`));
+
+            vote_record = await Votes.findByPk(vote_uid, {
+                attributes: ['votes', 'month_string'],
+                raw: true
+            })
+
+            voteObject = JSON.parse(vote_record.votes)
+
+            voteObject.third = thirdChoiceUid;
+
+            await Votes.upsert({
+                vote_uid: interaction.values[0].split('//')[1],
+                guild_id: interaction.guild.id,
+                month_string: vote_record.month_string,
+                user: interaction.user.tag,
+                votes: JSON.stringify(voteObject)
+            })
+            
+            console.log(`${interaction.user.tag} gave 1 vote to ${book.title} by ${book.author} for the month of ${book.month_string}`);
+
         }
 
+        const picks = await Books.findAll({
+            where: {
+                [Op.or]: [
+                    [{book_uid: voteObject.first}],
+                    [{book_uid: voteObject.second}],
+                    [{book_uid: voteObject.third}]
+                ]
+                
+            },
+            raw: true
+        })
+
+        let sortedPicks = {};
+
+        for (const pick in picks) {
+            if (picks[pick].book_uid === voteObject.first) {
+                sortedPicks['first'] = picks[pick];
+                continue;
+            }
+            if (picks[pick].book_uid === voteObject.second) {
+                sortedPicks['second'] = picks[pick];
+                continue;
+            }
+            if (picks[pick].book_uid === voteObject.third) {
+                sortedPicks['third'] = picks[pick];
+                continue;
+            }
+        }
+
+
+
+        let message = `
+        Here are your picks for ${book.month_string}:
+
+        **FIRST**: ${sortedPicks.first.title} by ${sortedPicks.first.author}
+        **SECOND**: ${sortedPicks.second.title} by ${sortedPicks.second.author}
+        **THIRD**: ${sortedPicks.third.title} by ${sortedPicks.third.author}`
+
+
         return await interaction.update({
-            content: `Thank you for voting! Your votes have been recorded! Please do not vote a second time.`
+            content: `Thank you for voting! Your votes have been recorded! If you vote again for ${book.month_string}, you will overwrite your current picks.
+${message}`,
+            components: []
         })
     }
 })
@@ -765,7 +897,7 @@ client.once(Events.ClientReady, async () => {
         main()
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
-            // Botms.sync({ force: true });
+            // Votes.sync({ force: true });
             await db.sync({ force: true }).then (async () => 
                 console.log("Tables synced!"));
     });
