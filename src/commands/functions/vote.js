@@ -18,7 +18,7 @@ module.exports = {
             for (const entry in dates) {
                 stringSelect.push({
                     label: `${dates[entry].month_string}`,
-                    value: `${dates[entry].month_string}`
+                    value: `${dates[entry].month_string}//${dates[entry].date}`
                 })
 
             };
