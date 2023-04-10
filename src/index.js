@@ -9,6 +9,8 @@ const { Client,
     ActionRowBuilder,
     StringSelectMenuBuilder,
     EmbedBuilder,
+    ButtonBuilder, 
+    ButtonStyle,
 } = require('discord.js');
 
 const fs = require('node:fs');
@@ -37,6 +39,7 @@ const Votes = require("./data/models/Votes.js");
 let botmChannel_Id;
 let botmChannel_Name;
 let botmChannel_Object = {};
+var globalVoteResults;
 
 // Create array for commands
 const commands = [];
@@ -190,6 +193,89 @@ async function getBookDetails(url) {
             throw new Error('There was an error searching for that book. There might be a typo.');
         }
     }
+}
+
+// Calculates voting results
+async function getVoteResults(books) {
+    // const date = interaction.values[0].split('//')[1];
+    // const dateString = interaction.values[0].split('//')[0];
+    const date = books[0].date;
+    const dateString = books[0].month_string;
+    var totalVoteCount = 0;
+    let results = [dateString];
+
+    
+
+    const allVotes = await Votes.findAll({
+        where: {
+            date: date,
+            month_string: dateString,
+            guild_id: books[0].guild_id
+        },
+        raw: true
+    });
+
+    totalVoteCount = allVotes.length;
+
+    const getKey = (obj,val) => Object.keys(obj).find(key => obj[key] === val);
+
+    const score = (obj) => {
+        let first = obj.firstVotes * 3;
+        let second = obj.secondVotes * 2;
+        let third = obj.thirdVotes;
+        let total = first + second + third;
+
+        return total;
+    }
+
+    for (const book in books) {
+        let book_vote_record = {};
+        book_vote_record.book_uid = books[book].book_uid;
+        book_vote_record.title = books[book].title;
+        book_vote_record.author = books[book].author;
+        book_vote_record.month_string = books[book].month_string;
+        book_vote_record.firstVotes = 0;
+        book_vote_record.secondVotes = 0;
+        book_vote_record.thirdVotes = 0;
+
+        for (const entry in allVotes) {
+            const vote_record = JSON.parse(allVotes[entry].votes);
+    
+            switch (getKey(vote_record, books[book].book_uid)) {
+                case undefined:
+                    break;
+
+                case "first":
+                    book_vote_record.firstVotes++;
+                    break;
+
+                case "second":
+                    book_vote_record.secondVotes++;
+                    break;
+
+                case "third":
+                    book_vote_record.thirdVotes++;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        book_vote_record.score = score(book_vote_record);
+        results.push(book_vote_record);
+    }
+    
+    // Sort the results
+    results.sort((a, b) => {
+        return b.score - a.score;
+    })
+
+    results.splice(1, 0, totalVoteCount);
+    console.log(results);
+
+    // Return the results
+    return results;
 }
 
 // Executes commands
@@ -505,18 +591,18 @@ client.on(Events.InteractionCreate, async interaction => {
     let secondChoiceUid;
     let thirdChoiceUid;
 
-    let votesJsonObject = {};
-
     if (interaction.isStringSelectMenu() && (interaction.customId === 'voteMonthSelect')) {
 
         let vote_record;
 
         // Grab date that was input by user
-        const dateString = interaction.values[0];
+        const dateString = interaction.values[0].split('//')[0];
+        const date = interaction.values[0].split('//')[1];
 
         // Find all books in Books table for that date
         const books = await Books.findAll({
             where: {
+                date: date,
                 month_string: dateString,
                 guild_id: interaction.guild.id
             }
@@ -524,6 +610,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const votes = await Votes.findAll({
             where: {
+                date: date,
                 month_string: dateString,
                 guild_id: interaction.guild.id,
                 user: interaction.user.tag
@@ -535,6 +622,7 @@ client.on(Events.InteractionCreate, async interaction => {
         if ((votes) && votes.length === 0) {
             vote_record = await Votes.create({
                 guild_id: interaction.guild.id,
+                date: date,
                 month_string: dateString,
                 user: interaction.user.tag,
                 votes: JSON.stringify({})
@@ -544,6 +632,7 @@ client.on(Events.InteractionCreate, async interaction => {
             vote_record = await Votes.findOne({
                 where: {
                     guild_id: interaction.guild.id,
+                    date: date,
                     month_string: dateString,
                     user: interaction.user.tag
                 }
@@ -620,7 +709,7 @@ client.on(Events.InteractionCreate, async interaction => {
         if (book) {
             
             vote_record = await Votes.findByPk(vote_uid, {
-                attributes: ['votes', 'month_string'],
+                attributes: ['votes', 'date', 'month_string'],
                 raw: true
             })
 
@@ -631,6 +720,7 @@ client.on(Events.InteractionCreate, async interaction => {
             await Votes.upsert({
                 vote_uid: interaction.values[0].split('//')[1],
                 guild_id: interaction.guild.id,
+                date: vote_record.date,
                 month_string: vote_record.month_string,
                 user: interaction.user.tag,
                 votes: JSON.stringify(voteObject)
@@ -719,7 +809,7 @@ client.on(Events.InteractionCreate, async interaction => {
         // If a book is found, record vote
         if (book) {
             vote_record = await Votes.findByPk(vote_uid, {
-                attributes: ['vote_uid', 'votes', 'month_string'],
+                attributes: ['votes', 'date', 'month_string'],
                 raw: true
             })
 
@@ -732,6 +822,7 @@ client.on(Events.InteractionCreate, async interaction => {
             await Votes.upsert({
                 vote_uid: interaction.values[0].split('//')[1],
                 guild_id: interaction.guild.id,
+                date: vote_record.date,
                 month_string: vote_record.month_string,
                 user: interaction.user.tag,
                 votes: JSON.stringify(voteObject)
@@ -743,6 +834,7 @@ client.on(Events.InteractionCreate, async interaction => {
         // Find all books in Books table for that date, excluding the books already selected
         const thirdChoiceBooks = await Books.findAll({
             where: {
+                date:vote_record.date,
                 month_string: vote_record.month_string,
                 guild_id: interaction.guild.id,
                 book_uid: {
@@ -824,7 +916,7 @@ client.on(Events.InteractionCreate, async interaction => {
         if (book) {
 
             vote_record = await Votes.findByPk(vote_uid, {
-                attributes: ['votes', 'month_string'],
+                attributes: ['votes', 'date', 'month_string'],
                 raw: true
             })
 
@@ -835,6 +927,7 @@ client.on(Events.InteractionCreate, async interaction => {
             await Votes.upsert({
                 vote_uid: interaction.values[0].split('//')[1],
                 guild_id: interaction.guild.id,
+                date: vote_record.date,
                 month_string: vote_record.month_string,
                 user: interaction.user.tag,
                 votes: JSON.stringify(voteObject)
@@ -889,6 +982,190 @@ ${message}`,
             components: []
         })
     }
+});
+
+// /VOTERESULTS - Handles when a user wants to see the voting results for a specific month
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'resultsMonthSelect')) {
+        const date = interaction.values[0].split('//')[1];
+        const dateString = interaction.values[0].split('//')[0];
+        let resultString = `Here are the voting results for ${dateString}:
+         `;
+
+        const books = await Books.findAll({
+            where: {
+                date: date,
+                month_string: dateString,
+                guild_id: interaction.guild.id
+            },
+            raw: true
+        });
+        await getVoteResults(books).then((results) => {
+            globalVoteResults = results;
+            for (var i = 2; i < results.length; i++) {
+
+                resultString = `${resultString}
+**${results[i].title} by ${results[i].author}**
+    First Choice Votes: ${results[i].firstVotes}
+    Second Choice Votes: ${results[i].secondVotes}
+    Third Choice Votes: ${results[i].thirdVotes}
+    Total Score: ${results[i].score}
+    `;
+
+            }
+            resultString = `${resultString}
+${results[1]} total vote(s).`
+        });
+
+        const buttonRow = new ActionRowBuilder()
+            .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('publishResults')
+                        .setLabel('Publish Results!')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('cancelPublish')
+                        .setLabel('No')
+                        .setStyle(ButtonStyle.Danger)
+            )
+
+        await interaction.update({
+            content: `${resultString}
+            
+Would you like to publish these results to everyone?`,
+            components: [buttonRow],
+            fetchReply:true,
+        })
+    }
+});
+
+// Publish Results Button - Handles when an admin wants to publish results to the server
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId === 'cancelPublish') {
+
+        await interaction.update({
+            content: `
+${interaction.message.content}
+
+***You did not publish these results.***`,
+            components: []
+        })
+        
+    }
+
+    if (interaction.customId === 'publishResults') {
+
+        if (botmChannel_Id !== undefined) {
+
+            await interaction.update({
+                content: `
+${interaction.message.content}
+
+***Publishing...***`,
+                components: []
+            })
+
+            const books = await Books.findAll({
+                where: {
+                    month_string: globalVoteResults[0],
+                    guild_id: interaction.guild.id
+                },
+                raw: true
+            });
+
+            globalVoteResults = [];
+
+            let bookUidArray = [];
+
+            const results = await getVoteResults(books);
+
+
+            for (var i = 2; i < results.length; i++) {
+                bookUidArray.push(results[i].book_uid)
+                console.log(results[i].book_uid)
+            }
+
+            console.log(bookUidArray);
+
+            const firstPlace = await Books.findOne({
+                where: {
+                    book_uid: bookUidArray[0],
+                    month_string: results[0],
+                    guild_id: interaction.guild.id
+
+                },
+                raw: true
+            })
+
+            const secondPlace = await Books.findOne({
+                where: {
+                    book_uid: bookUidArray[1],
+                    month_string: results[0],
+                    guild_id: interaction.guild.id
+
+                },
+                raw: true
+            })
+
+            const thirdPlace = await Books.findOne({
+                where: {
+                    book_uid: bookUidArray[2],
+                    month_string: results[0],
+                    guild_id: interaction.guild.id
+
+                },
+                raw: true
+            })
+
+            await Botms.create({
+                book_uid: firstPlace.book_uid,
+                guild_id: firstPlace.guild_id,
+                date: firstPlace.date,
+                month_string: firstPlace.month_string,
+                title: firstPlace.title,
+                author: firstPlace.author,
+                pages: firstPlace.pages,
+                grUrl: firstPlace.grUrl,
+                submitted_by: firstPlace.submitted_by,
+                img_url: firstPlace.img_url
+            })
+
+            const publishEmbed = new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle(`:first_place: ***${firstPlace.title} by ${firstPlace.author}***`)
+                .setAuthor({ name: `${interaction.user.username} just posted the results for ${firstPlace.month_string}!!`, iconURL: `${interaction.user.displayAvatarURL()}`})
+                .setURL(firstPlace.grUrl) 
+                .addFields(
+                    {name: 'Pages', value: `${firstPlace.pages}`, inline: true},
+                    {name: `Suggested by`, value: `${firstPlace.submitted_by}`, inline: true},
+                    {name: ' ', value: ' ', inline: false},
+                    {name: `:second_place: ${secondPlace.title} by ${secondPlace.author}`, value: `-suggested by ${secondPlace.submitted_by}`, inline: false},
+                    {name: `:third_place: ${thirdPlace.title} by ${thirdPlace.author}`, value: `-suggested by ${thirdPlace.submitted_by}`, inline: false}
+                )
+                .setImage(firstPlace.img_url)
+                .setFooter({
+                    text: `**Powered by ${client.user.username}** - built by Alex Crouch`})
+
+            
+                botmChannel_Object.send({
+                    content: `@here
+**Hey Everyone! THE RESULTS ARE IN for ${firstPlace.month_string}!**
+                    `,
+                    embeds: [publishEmbed]
+                })
+        } else {
+            await interaction.update({
+                content: `
+${interaction.message.content}
+    
+***Error: You need to set a Book of the Month channel.*** Please use **/setbotmchannel** to do so`,
+                components: []
+            })
+        }
+    }
+
 })
 
 // Executes main function and syncs tables once connected to Client
@@ -898,7 +1175,8 @@ client.once(Events.ClientReady, async () => {
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
             // Votes.sync({ force: true });
-            await db.sync({ force: true }).then (async () => 
+            Botms.sync({ force: true });
+            await db.sync({  }).then (async () => 
                 console.log("Tables synced!"));
     });
     } catch (err) {
