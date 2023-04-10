@@ -278,6 +278,29 @@ async function getVoteResults(books) {
     return results;
 }
 
+async function doesBotmExist(month, guildId) {
+
+    try {
+
+        const num_botms = await Botms.findAndCountAll({
+            where: {
+                month_string: month,
+                guild_id: guildId
+            }
+        })
+
+        console.log(num_botms.count > 0);
+
+        if (num_botms.count > 0) {
+            return true;
+        } else {
+            return false;
+        }
+    } catch (err) {
+        console.log(err);
+    }
+}
+
 // Executes commands
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
@@ -1057,7 +1080,18 @@ ${interaction.message.content}
 
     if (interaction.customId === 'publishResults') {
 
+        if ((await doesBotmExist(globalVoteResults[0], interaction.guild.id))) {
+            return await interaction.update({
+                content: `
+${interaction.message.content}
+
+***A book has already been picked for this month.*** Please select a different month`,
+            components: []
+            })
+        }
+        
         if (botmChannel_Id !== undefined) {
+
 
             await interaction.update({
                 content: `
