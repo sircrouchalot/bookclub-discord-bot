@@ -13,6 +13,10 @@ const Votes = sequelize.define('votes', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    date: {
+        type: DataTypes.DATEONLY,
+        allowNull: false
+    },
     month_string: {
         type: DataTypes.STRING,
         allowNull: false
