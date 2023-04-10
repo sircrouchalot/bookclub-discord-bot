@@ -278,6 +278,7 @@ async function getVoteResults(books) {
     return results;
 }
 
+// Checks if the book already exists in Botm table
 async function doesBotmExist(month, guildId) {
 
     try {
