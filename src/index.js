@@ -402,7 +402,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 })
 
-// /CHOOSEBOTM - Choose Month - Handles selecting a month in order to set a Book of the Month
+// ****OBSOLETE /CHOOSEBOTM - Choose Month - Handles selecting a month in order to set a Book of the Month
 client.on(Events.InteractionCreate, async interaction => {
 	if (interaction.isStringSelectMenu() && (interaction.customId === 'monthSelect')) {
 
@@ -471,7 +471,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// /CHOOSEBOTM - Choose Book - Handles selecting a book for Book of the Month
+// ****OBSOLETE /CHOOSEBOTM - Choose Book - Handles selecting a book for Book of the Month
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmSelect')) {
 
@@ -556,6 +556,37 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// /GETBOTM - Handles selecting a month to grab the Book of the Month's information
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'botmMonthSelect')) {
+        let month_string = interaction.values[0].split('//')[0];
+        let date_ts = interaction.values[0].split('//')[1];
+        let book;
+
+        await Books.findOne({ where: { date: date_ts }, raw: true})
+            .then((res) => {
+                book = res;
+            });
+
+        const bookEmbed = new EmbedBuilder()
+            .setColor(0x0099FF)
+            .setTitle(`${book.title} by ${book.author}`)
+            .setURL(book.grUrl)
+            .addFields(
+                {name: 'Page Count', value: `${book.pages}`}
+            )
+            .setImage(book.img_url)
+            .setFooter({
+                text: `**Powered by ${client.user.username}** - built by Alex Crouch`
+            })
+        
+        await interaction.reply({
+            content: `The book for ${month_string} was suggested by ${book.submitted_by}`,
+            embeds: [bookEmbed],
+            ephemeral: true
+        })
+    }
+})
 // /SUGGEST - Handles the pop-up when suggesting a book
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
