@@ -35,10 +35,9 @@ const Books = require("./data/models/Books.js");
 const Guilds = require("./data/models/Guilds.js");
 const Botms = require("./data/models/Botms.js");
 const Votes = require("./data/models/Votes.js");
+const Channels = require("./data/models/Channels.js");
+const ChannelRef = require("./data/models/ChannelRef.js");
 
-let botmChannel_Id;
-let botmChannel_Name;
-let botmChannel_Object = {};
 var globalVoteResults;
 
 // Create array for commands
@@ -98,15 +97,15 @@ async function main() {
 };
 
 // Adds Guild to Guild table if it doesn't already exist
-async function guildCheck(interaction) {
+async function guildCheck(guildObj) {
 
     try {
         const guild = await Guilds.upsert({
-            guild_id: interaction.guild.id,
-            guild_name: interaction.guild.name,
-            guild_owner: interaction.guild.ownerId,
-            num_members: interaction.guild.memberCount,
-            guild_locale: interaction.guild.preferredLocale
+            guild_id: guildObj.id,
+            guild_name: guildObj.name,
+            guild_owner: guildObj.ownerId,
+            num_members: guildObj.memberCount,
+            guild_locale: guildObj.preferredLocale
         });
     } catch (err) {
         console.log(err);
@@ -302,11 +301,47 @@ async function doesBotmExist(month, guildId) {
     }
 }
 
+// Set Guild Channels
+async function setGuildChannels(guild) {
+    const discordServer = guild;
+    const channels = discordServer?.channels ? JSON.parse(
+        JSON.stringify(discordServer.channels)
+    ).guild.channels : [];
+    console.log(channels);
+
+    for (id in channels) {
+
+        const channelObject = discordServer.channels.cache.get(channels[id]);
+
+        const channelName = channelObject.name;
+
+        await Channels.upsert({
+            channel_id: channels[id],
+            guild_id: discordServer.id,
+            channel_name: channelName,
+            channel_type: channelObject.type
+        })
+    }
+}
+
+// Get Book of the Month Channel
+async function getBotmChannel(guild) {
+
+    const botmChannel = await Channels.findAll({
+        where: {
+            guild_id: guild.id,
+            botm_channel_flag: 1
+        },
+        raw: true
+    })
+    console.log(botmChannel);
+    return botmChannel;
+}
+
 // Executes commands
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    guildCheck(interaction);
     const command = interaction.client.commands.get(interaction.commandName);
 
     // If the command is /choosebotm, then the app checks if a channel has been set for botm updates.
@@ -344,15 +379,24 @@ client.on(Events.InteractionCreate, async interaction => {
 // /SETBOTMCHANNEL - Listener for handling setting botm channel to global variable
 client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmChannelSelect')) {
-        botmChannel_Id = interaction.values[0];
-        botmChannel_Object = interaction.guild.channels.cache.get(botmChannel_Id);
-        botmChannel_Name = botmChannel_Object.name;
+        let channelId = interaction.values[0];
+        let channelObj = interaction.guild.channels.cache.get(channelId);
+        let channelName = channelObj.name;
 
-        await interaction.update({
-            content: `Book of the Month channel is set to: ${botmChannel_Name}`,
-            components: [],
-            ephemeral: true
-        });
+        await Channels.update({ botm_channel_flag: 1 }, {
+            where: {
+                channel_id: channelId,
+                guild_id: interaction.guild.id
+            }
+        }).then(() => {
+            interaction.update({
+                content: `Book of the Month channel is set to: ${channelName}`,
+                components: [],
+                ephemeral: true
+            });
+        })
+
+        
     } else {
         return;
     }
@@ -1066,6 +1110,9 @@ Would you like to publish these results to everyone?`,
 // Publish Results Button - Handles when an admin wants to publish results to the server
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
+    const botmChannel_Id = (await getBotmChannel(interaction.guild))[0].channel_id;
+    console.log(botmChannel_Id);
+    const botmChannel_Object = client.channels.cache.get(botmChannel_Id);
 
     if (interaction.customId === 'cancelPublish') {
 
@@ -1134,25 +1181,40 @@ ${interaction.message.content}
                 raw: true
             })
 
-            const secondPlace = await Books.findOne({
-                where: {
-                    book_uid: bookUidArray[1],
-                    month_string: results[0],
-                    guild_id: interaction.guild.id
+            var secondPlace;
+            try {
 
-                },
-                raw: true
-            })
+                await Books.findOne({
+                    where: {
+                        book_uid: bookUidArray[1],
+                        month_string: results[0],
+                        guild_id: interaction.guild.id
 
-            const thirdPlace = await Books.findOne({
-                where: {
-                    book_uid: bookUidArray[2],
-                    month_string: results[0],
-                    guild_id: interaction.guild.id
+                    },
+                    raw: true
+                }).then((res) => {
+                    secondPlace = res;
+                })
+            } catch (err) {
+                console.log("There was no second choice book...")
+            }
 
-                },
-                raw: true
-            })
+            var thirdPlace;
+            try {
+                await Books.findOne({
+                    where: {
+                        book_uid: bookUidArray[2],
+                        month_string: results[0],
+                        guild_id: interaction.guild.id
+
+                    },
+                    raw: true
+                }).then((res) => {
+                    thirdPlace = res;
+                })
+            } catch (err) {
+                console.log("There was no third choice book...")
+            }
 
             await Botms.create({
                 book_uid: firstPlace.book_uid,
@@ -1211,12 +1273,22 @@ client.once(Events.ClientReady, async () => {
             console.log("Connection to database has been established successfully.");
             // Votes.sync({ force: true });
             Botms.sync({ force: true });
+            Guilds.sync({ force: false });
+            Channels.sync({  });
             await db.sync({  }).then (async () => 
                 console.log("Tables synced!"));
     });
     } catch (err) {
         console.log(err);
     }
+});
+
+client.on("guildCreate", async function(guild){
+    console.log(`the client joined Guild: ${guild.name}`);
+    await guildCheck(guild);
+    await setGuildChannels(guild);
+    await main();
+
 });
 
 // Client logs in to servers
