@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { StringSelectMenuBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const Channels = require("../../data/models/Channels");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -9,8 +10,12 @@ module.exports = {
         .setDMPermission(false),
     async execute(interaction) {
 
-        const channelList = interaction.guild.channels.cache
-            .filter((ch) => ch.type === 0);
+        const channelList = await Channels.findAll({
+            where: {
+                guild_id: interaction.guild.id,
+                channel_type: 0
+            }
+        })
         
         if (channelList) {
         
@@ -18,10 +23,12 @@ module.exports = {
             channelList.forEach((entry) => {
 
                 channelNames.push( {
-                    label: `${entry.name}`,
-                    value: `${entry.id}`
+                    label: `${entry.channel_name}`,
+                    value: `${entry.channel_id}`
                 })
             });
+
+            console.log(channelNames);
 
             const channelDrop = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
