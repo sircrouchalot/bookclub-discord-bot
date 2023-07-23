@@ -15,7 +15,11 @@ module.exports = {
             attributes: [
                 [Sequelize.fn('DISTINCT', Sequelize.col('date')), 'date'],
                 'month_string'
-            ]
+            ],
+            where: {
+                guild_id: interaction.guild.id,
+            },
+            order: [['date', 'DESC']]
         });
 
         let stringSelect = [];
