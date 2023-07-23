@@ -563,7 +563,7 @@ client.on(Events.InteractionCreate, async interaction => {
         let date_ts = interaction.values[0].split('//')[1];
         let book;
 
-        await Books.findOne({ where: { date: date_ts }, raw: true})
+        await Books.findOne({ where: { date: date_ts, guild_id: interaction.guild }, raw: true})
             .then((res) => {
                 book = res;
             });
@@ -587,6 +587,7 @@ client.on(Events.InteractionCreate, async interaction => {
         })
     }
 })
+
 // /SUGGEST - Handles the pop-up when suggesting a book
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
@@ -1137,6 +1138,43 @@ Would you like to publish these results to everyone?`,
         })
     }
 });
+
+// /GETSUGGESTIONS - Handles returning a list of Book suggestions based on selected month
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'suggestMonthSelect')) {
+        const month_string = interaction.values[0].split('//')[0];
+        const date_ts = interaction.values[0].split('//')[1];
+        let resultString = `Here are all the book suggestsions for ${month_string}:
+         `;
+        let bookList;
+        
+
+        await Books.findAll({ 
+            where: {
+                date: date_ts, 
+                month_string: month_string,
+                guild_id: interaction.guild.id }, 
+            raw: true
+        }).then((res) => {
+                bookList = res;
+            })
+        
+        for (var i = 0; i < bookList.length; i++) {
+            resultString = `
+    ${resultString}
+**${bookList[i].title} by ${bookList[i].author}**
+    Suggested by ${bookList[i].submitted_by}
+    Page Count: ${bookList[i].pages}
+    [Goodreads Link](<${bookList[i].grUrl}>)
+    `;
+        }
+
+        await interaction.update({
+            content: `${resultString}`,
+            components: [],
+        })
+    }
+})
 
 // Publish Results Button - Handles when an admin wants to publish results to the server
 client.on(Events.InteractionCreate, async interaction => {
