@@ -563,7 +563,7 @@ client.on(Events.InteractionCreate, async interaction => {
         let date_ts = interaction.values[0].split('//')[1];
         let book;
 
-        await Books.findOne({ where: { date: date_ts, guild_id: interaction.guild }, raw: true})
+        await Books.findOne({ where: { date: date_ts, guild_id: interaction.guild.id }, raw: true})
             .then((res) => {
                 book = res;
             });
