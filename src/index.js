@@ -1238,6 +1238,10 @@ ${interaction.message.content}
                 console.log(results[i].book_uid)
             }
 
+            if (bookUidArray.length > 3) {
+                bookUidArray.length = 3;
+            }
+
             console.log(bookUidArray);
 
             const firstPlace = await Books.findOne({
@@ -1298,23 +1302,42 @@ ${interaction.message.content}
                 img_url: firstPlace.img_url
             })
 
+            let fields =[
+                {name: 'Pages', value: `${firstPlace.pages}`, inline: true},
+                {name: `Suggested by`, value: `${firstPlace.submitted_by}`, inline: true}
+            ];
+
+            console.log(bookUidArray);
+
+            
+
+            console.log(fields);
+
             const publishEmbed = new EmbedBuilder()
                 .setColor(0x0099FF)
                 .setTitle(`:first_place: ***${firstPlace.title} by ${firstPlace.author}***`)
                 .setAuthor({ name: `${interaction.user.username} just posted the results for ${firstPlace.month_string}!!`, iconURL: `${interaction.user.displayAvatarURL()}`})
-                .setURL(firstPlace.grUrl) 
                 .addFields(
                     {name: 'Pages', value: `${firstPlace.pages}`, inline: true},
-                    {name: `Suggested by`, value: `${firstPlace.submitted_by}`, inline: true},
-                    {name: ' ', value: ' ', inline: false},
-                    {name: `:second_place: ${secondPlace.title} by ${secondPlace.author}`, value: `-suggested by ${secondPlace.submitted_by}`, inline: false},
-                    {name: `:third_place: ${thirdPlace.title} by ${thirdPlace.author}`, value: `-suggested by ${thirdPlace.submitted_by}`, inline: false}
+                    {name: `Suggested by`, value: `${firstPlace.submitted_by}`, inline: true},  
                 )
+                .setURL(firstPlace.grUrl) 
                 .setImage(firstPlace.img_url)
                 .setFooter({
-                    text: `**Powered by ${client.user.username}** - built by Alex Crouch`})
+                    text: `**Powered by ${client.user.username}** - built by Alex Crouch`});
 
-            
+
+                for (i = 1; i < bookUidArray.length; i++) {
+                    if (i = 1) {
+                        let fieldObj = {name: `:second_place: ${secondPlace.title} by ${secondPlace.author}`, value: `- suggested by ${secondPlace.submitted_by}`, inline: false}
+                        publishEmbed.addFields(fieldObj);
+                    }
+                    if (i = 2) {
+                        let fieldObj = {name: `:third_place: ${thirdPlace.title} by ${thirdPlace.author}`, value: `- suggested by ${thirdPlace.submitted_by}`, inline: false}
+                        publishEmbed.addFields(fieldObj);
+                    }
+                }
+
                 botmChannel_Object.send({
                     content: `@here
 **Hey Everyone! THE RESULTS ARE IN for ${firstPlace.month_string}!**
