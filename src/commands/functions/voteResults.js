@@ -46,11 +46,18 @@ module.exports = {
                 .setPlaceholder('Select Month')
                 .addOptions(stringSelect),
         );
-
-        await interaction.reply({
-            content: "",
-            components: [select],
-            ephemeral: true
-        });
+        
+        try {
+            await interaction.reply({
+                content: "",
+                components: [select],
+                ephemeral: true
+            });
+        } catch(e) {
+            await interaction.reply({
+                content: "No one has voted for anything!",
+                ephemeral: true
+            })
+        }
     }
 }
