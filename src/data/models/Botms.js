@@ -49,7 +49,12 @@ const Botms = sequelize.define('botms', {
 	    type: DataTypes.FLOAT,
 		  allowNull: true,
       defaultValue: 0
-	}
+	  },
+    num_ratings: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0
+    }
 });
 
 module.exports = Botms;
