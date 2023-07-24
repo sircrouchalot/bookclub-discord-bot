@@ -1,4 +1,5 @@
 require('dotenv').config({ path: `./.env.${process.env.NODE_ENV}` });
+require('events').EventEmitter.defaultMaxListeners = 15;
 
 const { Client, 
     Collection,
@@ -11,6 +12,7 @@ const { Client,
     EmbedBuilder,
     ButtonBuilder, 
     ButtonStyle,
+    Guild,
 } = require('discord.js');
 
 const fs = require('node:fs');
@@ -26,7 +28,9 @@ const GUILD_ID = process.env.GUILD_ID;
 const client = new Client ({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences
     ],
 });
 
@@ -326,7 +330,6 @@ async function setGuildChannels(guild) {
 
 // Get Book of the Month Channel
 async function getBotmChannel(guild) {
-
     const botmChannel = await Channels.findAll({
         where: {
             guild_id: guild.id,
@@ -338,8 +341,22 @@ async function getBotmChannel(guild) {
     return botmChannel;
 }
 
-// Executes commands
+// Get User's DisplayName if they have one. Otherwise return username
+function getDisplayName(userId, guild) {
+    const member = guild.members.cache.get(userId);
+    
+    if (member.nickname == null || member.nickname === undefined) {
+        return member.user.username;
+        
+    } else {
+        const displayName = member.nickname;
+        return displayName
+    }
+}
+
+// Executes commands - OBSOLETE /chosoebotm command code here
 client.on(Events.InteractionCreate, async interaction => {
+    
     if (!interaction.isChatInputCommand()) return;
 
     const command = interaction.client.commands.get(interaction.commandName);
@@ -377,7 +394,9 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // /SETBOTMCHANNEL - Listener for handling setting botm channel to global variable
+// TODO: if BotmChannel is updated, remove old BotmChannel
 client.on(Events.InteractionCreate, async interaction => {
+    setGuildChannels(interaction.guild);
     if (interaction.isStringSelectMenu() && (interaction.customId === 'botmChannelSelect')) {
         let channelId = interaction.values[0];
         let channelObj = interaction.guild.channels.cache.get(channelId);
@@ -431,7 +450,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     author: books[book].author,
                     pages: books[book].pages,
                     grUrl: books[book].grUrl,
-                    submitted_by: books[book].submitted_by,
+                    submitted_by: getDisplayName(books[book].submitted_by, interaction.guild),
                 }
 
                 const book_uid = bookObject.book_uid;
@@ -510,7 +529,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     author: book.author,
                     pages: book.pages,
                     grUrl: book.grUrl,
-                    submitted_by: book.submitted_by,
+                    submitted_by: interaction.user.id,
                     img_url: book.img_url
                 })
                 
@@ -581,7 +600,7 @@ client.on(Events.InteractionCreate, async interaction => {
             })
         
         await interaction.reply({
-            content: `The book for ${month_string} was suggested by ${book.submitted_by}`,
+            content: `The book for ${month_string} was suggested by ${getDisplayName(book.submitted_by, interaction.guild)}`,
             embeds: [bookEmbed],
             ephemeral: true
         })
@@ -593,6 +612,8 @@ client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
     if (interaction.customId === 'suggestBookModal') {
+
+        await setGuildChannels(interaction.guild);
 
         // Get the data entered by the user
         const month = interaction.fields.getTextInputValue('monthInput');
@@ -649,7 +670,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 author: author,
                 pages: pageCount,
                 grUrl: grURL,
-                submitted_by: interaction.user.tag,
+                submitted_by: interaction.user.id,
                 img_url: imgDescObject.image
             });
 
@@ -754,7 +775,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     author: books[book].author,
                     pages: books[book].pages,
                     grUrl: books[book].grUrl,
-                    submitted_by: books[book].submitted_by,
+                    submitted_by: getDisplayName(books[book].submitted_by, interaction.guild),
                 }
 
                 const book_uid = bookObject.book_uid;
@@ -856,7 +877,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     author: secondChoiceBooks[book].author,
                     pages: secondChoiceBooks[book].pages,
                     grUrl: secondChoiceBooks[book].grUrl,
-                    submitted_by: secondChoiceBooks[book].submitted_by,
+                    submitted_by: getDisplayName(secondChoiceBooks[book].submitted_by, interaction.guild),
                 }
 
                 const book_uid = bookObject.book_uid;
@@ -961,7 +982,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     author: thirdChoiceBooks[book].author,
                     pages: thirdChoiceBooks[book].pages,
                     grUrl: thirdChoiceBooks[book].grUrl,
-                    submitted_by: thirdChoiceBooks[book].submitted_by,
+                    submitted_by: getDisplayName(thirdChoiceBooks[book].submitted_by, interaction.guild),
                 }
 
                 const book_uid = bookObject.book_uid;
@@ -1092,6 +1113,8 @@ client.on(Events.InteractionCreate, async interaction => {
         let resultString = `Here are the voting results for ${dateString}:
          `;
 
+        await setGuildChannels(interaction.guild);
+
         const books = await Books.findAll({
             where: {
                 date: date,
@@ -1163,7 +1186,7 @@ client.on(Events.InteractionCreate, async interaction => {
             resultString = `
     ${resultString}
 **${bookList[i].title} by ${bookList[i].author}**
-    Suggested by ${bookList[i].submitted_by}
+    Suggested by ${getDisplayName(bookList[i].submitted_by, interaction.guild)}
     Page Count: ${bookList[i].pages}
     [Goodreads Link](<${bookList[i].grUrl}>)
     `;
@@ -1298,13 +1321,13 @@ ${interaction.message.content}
                 author: firstPlace.author,
                 pages: firstPlace.pages,
                 grUrl: firstPlace.grUrl,
-                submitted_by: firstPlace.submitted_by,
+                submitted_by: interaction.user.id,
                 img_url: firstPlace.img_url
             })
 
             let fields =[
                 {name: 'Pages', value: `${firstPlace.pages}`, inline: true},
-                {name: `Suggested by`, value: `${firstPlace.submitted_by}`, inline: true}
+                {name: `Suggested by`, value: `${getDisplayName(firstPlace.submitted_by, interaction.guild)}`, inline: true}
             ];
 
             console.log(bookUidArray);
@@ -1319,7 +1342,7 @@ ${interaction.message.content}
                 .setAuthor({ name: `${interaction.user.username} just posted the results for ${firstPlace.month_string}!!`, iconURL: `${interaction.user.displayAvatarURL()}`})
                 .addFields(
                     {name: 'Pages', value: `${firstPlace.pages}`, inline: true},
-                    {name: `Suggested by`, value: `${firstPlace.submitted_by}`, inline: true},  
+                    {name: `Suggested by`, value: `${getDisplayName(firstPlace.submitted_by, interaction.guild)}`, inline: true},  
                 )
                 .setURL(firstPlace.grUrl) 
                 .setImage(firstPlace.img_url)
@@ -1329,11 +1352,11 @@ ${interaction.message.content}
 
                 for (i = 1; i < bookUidArray.length; i++) {
                     if (i = 1) {
-                        let fieldObj = {name: `:second_place: ${secondPlace.title} by ${secondPlace.author}`, value: `- suggested by ${secondPlace.submitted_by}`, inline: false}
+                        let fieldObj = {name: `:second_place: ${secondPlace.title} by ${secondPlace.author}`, value: `- suggested by ${getDisplayName(secondPlace.submitted_by, interaction.guild)}`, inline: false}
                         publishEmbed.addFields(fieldObj);
                     }
                     if (i = 2) {
-                        let fieldObj = {name: `:third_place: ${thirdPlace.title} by ${thirdPlace.author}`, value: `- suggested by ${thirdPlace.submitted_by}`, inline: false}
+                        let fieldObj = {name: `:third_place: ${thirdPlace.title} by ${thirdPlace.author}`, value: `- suggested by ${getDisplayName(thirdPlace.submitted_by, interaction.guild)}`, inline: false}
                         publishEmbed.addFields(fieldObj);
                     }
                 }
@@ -1357,6 +1380,106 @@ ${interaction.message.content}
 
 })
 
+// /RATE - Handles the user rating a Book of the Month selection
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'rateMonthSelect')) {
+        const date_ts = interaction.values[0].split('//')[1];
+        const monthString = interaction.values[0].split('//')[0];
+        let guild = interaction.guild;
+
+        let bookToRate = await Botms.findOne({
+            where: {
+                guild_id: guild.id,
+                date: date_ts
+            }
+        }).then((res) => {
+            return res;
+        });
+
+        let starSelect = [
+        {
+            label: '0.5 star', 
+            value: `0.5//${bookToRate.book_uid}`
+        }, {
+            label: '1 star', 
+            value: `1//${bookToRate.book_uid}`
+        }, {
+            label: '1.5 stars', 
+            value: `1.5//${bookToRate.book_uid}`
+        }, {
+            label: '2 stars', 
+            value: `2//${bookToRate.book_uid}`
+        }, {
+            label: '2.5 stars', 
+            value: `2.5//${bookToRate.book_uid}`
+        }, {
+            label: '3 stars', 
+            value: `3//${bookToRate.book_uid}`
+        }, {
+            label: '3.5 stars', 
+            value: `3.5//${bookToRate.book_uid}`
+        }, {
+            label: '4 stars', 
+            value: `4//${bookToRate.book_uid}`
+        }, {
+            label: '4.5 stars', 
+            value: `4.5//${bookToRate.book_uid}`
+        }, {
+            label: '5 stars', 
+            value: `5//${bookToRate.book_uid}`
+        }
+        ];
+
+        const starRow = new ActionRowBuilder()
+            .addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('ratingDropdown')
+                    .setPlaceholder('Number of Stars')
+                    .addOptions(starSelect),
+        );
+
+        await interaction.update({
+            content: `Would you like to rate **${bookToRate.title} by ${bookToRate.author}**?`,
+            components: [starRow],
+            fetchReply: true,
+        })
+    }
+
+    if (interaction.isStringSelectMenu() && (interaction.customId === 'ratingDropdown')) {
+
+        const bookId = interaction.values[0].split('//')[1];
+        const rating = interaction.values[0].split('//')[0];
+        
+        let numRatings;
+        let avgRating;
+        
+        const book = await Botms.findOne({
+            where: {
+                book_uid: bookId
+            }
+        })
+
+        numRatings = parseFloat(book.num_ratings);
+
+        avgRating = parseFloat(book.avg_rating);
+
+        let newRating = Math.round((((avgRating * numRatings) + parseFloat(rating)) / ++numRatings) * 100) / 100;
+        
+        book.avg_rating = newRating;
+        book.num_ratings = numRatings;
+
+        await book.save().then(() => {
+            console.log(`Book was successfully updated with an Average Rating of ${book.avg_rating} with ${book.num_ratings} users having rated!`);
+            
+            interaction.update({
+                content: `You have successfully rated ${book.title} by ${book.author} **${rating} stars**!
+Average Rating: **${book.avg_rating} stars!**
+**${book.num_ratings}** total readers have rated this book.`
+            })
+        });
+    }
+})
+
 // Executes main function and syncs tables once connected to Client
 client.once(Events.ClientReady, async () => {
     try {
@@ -1364,9 +1487,10 @@ client.once(Events.ClientReady, async () => {
         await db.authenticate().then (async () => {
             console.log("Connection to database has been established successfully.");
             // Votes.sync({ force: true });
-            Botms.sync({ force: true });
-            Guilds.sync({ force: false });
-            Channels.sync({  });
+            // Botms.sync({ force: true });
+            // Books.sync({ force: true });
+            // Guilds.sync({ force: true });
+            // Channels.sync({ force: true });
             await db.sync({  }).then (async () => 
                 console.log("Tables synced!"));
     });
